@@ -1,27 +1,148 @@
+import { Capacitor } from '@capacitor/core';
 import type { BackendStatus, WordQuizPayload } from '../types';
 
-// Supports optional custom backend URL (e.g., Render URL) or defaults to relative path
-const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+/**
+ * Production cloud backend hosting the Groq AI proxy.
+ */
+export const PRODUCTION_BACKEND_URL = 'https://voco-backend.onrender.com';
+
+/**
+ * Determines the correct API Base URL depending on environment:
+ * 1. Vite environment variable (VITE_API_URL or VITE_API_BASE_URL) if explicitly set.
+ * 2. Capacitor Android / iOS native app: points directly to PRODUCTION_BACKEND_URL.
+ * 3. Web in production (non-localhost): points directly to PRODUCTION_BACKEND_URL.
+ * 4. Local development in browser (localhost): uses relative path or proxy.
+ */
+export function getApiBaseUrl(): string {
+  // 1. Explicit Vite env variable
+  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+
+  // 2. Native Capacitor App (Android / iOS): must call cloud backend
+  if (Capacitor.isNativePlatform()) {
+    return PRODUCTION_BACKEND_URL;
+  }
+
+  // 3. Web environment
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // Local development web server
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return '';
+    }
+    // Deployed web frontend (e.g. voco-vbpc.onrender.com) calls production backend
+    return PRODUCTION_BACKEND_URL;
+  }
+
+  return PRODUCTION_BACKEND_URL;
+}
+
+/**
+ * Validates a word input before sending to backend.
+ */
+export function validateInputWord(word: string): string {
+  const cleanWord = word.trim();
+  if (!cleanWord) {
+    throw new Error('Please enter an English word.');
+  }
+  if (cleanWord.length < 2) {
+    throw new Error('Word is too short. Please enter at least 2 letters.');
+  }
+  if (cleanWord.length > 50) {
+    throw new Error('Word is too long. Please enter a single word or short phrase.');
+  }
+  if (!/[a-zA-Z]/.test(cleanWord)) {
+    throw new Error('Please enter a word containing alphabetical characters.');
+  }
+  return cleanWord;
+}
+
+/**
+ * Validates incoming AI payload to ensure no malformed JSON fragments or placeholders.
+ */
+export function validateAiQuizResponse(data: unknown): WordQuizPayload {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid response structure received from server.');
+  }
+
+  const raw = data as Record<string, unknown>;
+
+  if (typeof raw.word !== 'string' || raw.word.trim().length < 2) {
+    throw new Error('Server returned an invalid or missing word.');
+  }
+  if (typeof raw.meaning !== 'string' || raw.meaning.trim().length < 5) {
+    throw new Error('Server returned an incomplete definition.');
+  }
+  if (typeof raw.example !== 'string' || raw.example.trim().length < 6) {
+    throw new Error('Server returned an incomplete example sentence.');
+  }
+  if (!Array.isArray(raw.options) || raw.options.length !== 4) {
+    throw new Error('Server must provide exactly 4 quiz options.');
+  }
+
+  for (let i = 0; i < raw.options.length; i++) {
+    const opt = raw.options[i];
+    if (typeof opt !== 'string' || opt.trim().length < 2) {
+      throw new Error(`Quiz option ${i + 1} is empty or incomplete.`);
+    }
+  }
+
+  const idx = Number(raw.correctIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx > 3) {
+    throw new Error('Server returned an invalid correct answer index.');
+  }
+
+  return {
+    word: raw.word.trim(),
+    meaning: raw.meaning.trim(),
+    example: raw.example.trim(),
+    options: raw.options.map((o) => String(o).trim()) as [string, string, string, string],
+    correctIndex: idx,
+  };
+}
 
 /**
  * Checks backend health and Groq API key configuration status.
  */
 export async function checkBackendStatus(): Promise<BackendStatus> {
+  const base = getApiBaseUrl();
   try {
-    const res = await fetch(`${API_BASE}/api/status`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const res = await fetch(`${base}/api/status`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
       return {
         configured: false,
         model: 'unknown',
-        message: `Backend proxy returned status ${res.status}`,
+        message: `Vocabulary server returned HTTP ${res.status}.`,
+        reachable: false,
       };
     }
-    return await res.json();
-  } catch (err) {
+
+    const data = await res.json();
+    return {
+      configured: Boolean(data?.configured),
+      model: data?.model || 'unknown',
+      message: data?.message || (data?.configured ? 'Groq AI connected.' : 'API key not configured on backend.'),
+      reachable: true,
+    };
+  } catch (err: unknown) {
+    const isAbort = err && typeof err === 'object' && 'name' in err && err.name === 'AbortError';
     return {
       configured: false,
       model: 'unknown',
-      message: 'Cannot reach backend proxy. Ensure your server is running.',
+      message: isAbort
+        ? 'Backend service is starting up. Please allow a few seconds.'
+        : 'Cannot reach vocabulary server. Please check your internet connection.',
+      reachable: false,
     };
   }
 }
@@ -30,14 +151,12 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
  * Calls backend Groq proxy to generate word definition and quiz options.
  */
 export async function generateVocabularyFromAI(word: string): Promise<WordQuizPayload> {
-  const cleanWord = word.trim();
-  if (!cleanWord) {
-    throw new Error('Please enter a word.');
-  }
+  const cleanWord = validateInputWord(word);
+  const base = getApiBaseUrl();
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}/api/vocabulary/generate`, {
+    response = await fetch(`${base}/api/vocabulary/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -46,7 +165,7 @@ export async function generateVocabularyFromAI(word: string): Promise<WordQuizPa
     });
   } catch (err) {
     throw new Error(
-      'Unable to connect to backend proxy. Please verify your internet connection and that the backend server is running.'
+      'Unable to connect to vocabulary server. Please verify your internet connection. (If the server was asleep, please try again in a few moments.)'
     );
   }
 
@@ -58,29 +177,7 @@ export async function generateVocabularyFromAI(word: string): Promise<WordQuizPa
     throw new Error(`${message}${details}`);
   }
 
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid response received from server.');
-  }
-
-  // Client-side schema verification for safety
-  if (
-    typeof data.word !== 'string' ||
-    typeof data.meaning !== 'string' ||
-    typeof data.example !== 'string' ||
-    !Array.isArray(data.options) ||
-    data.options.length !== 4 ||
-    typeof data.correctIndex !== 'number'
-  ) {
-    throw new Error('Server returned malformed quiz structure.');
-  }
-
-  return {
-    word: data.word,
-    meaning: data.meaning,
-    example: data.example,
-    options: data.options as [string, string, string, string],
-    correctIndex: data.correctIndex,
-  };
+  return validateAiQuizResponse(data);
 }
 
 /**
@@ -92,14 +189,12 @@ export async function refreshVocabularyFromAI(
   currentMeaning?: string,
   currentExample?: string
 ): Promise<WordQuizPayload> {
-  const cleanWord = word.trim();
-  if (!cleanWord) {
-    throw new Error('Please enter a word.');
-  }
+  const cleanWord = validateInputWord(word);
+  const base = getApiBaseUrl();
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}/api/vocabulary/refresh`, {
+    response = await fetch(`${base}/api/vocabulary/refresh`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -114,7 +209,7 @@ export async function refreshVocabularyFromAI(
 
     // Fallback to /api/vocabulary/generate with isRefresh flag if /api/vocabulary/refresh is not available
     if (response.status === 404) {
-      response = await fetch(`${API_BASE}/api/vocabulary/generate`, {
+      response = await fetch(`${base}/api/vocabulary/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +224,7 @@ export async function refreshVocabularyFromAI(
     }
   } catch (err) {
     throw new Error(
-      'Unable to connect to backend proxy. Please verify your internet connection and that the backend server is running.'
+      'Unable to connect to vocabulary server. Please verify your internet connection.'
     );
   }
 
@@ -141,28 +236,5 @@ export async function refreshVocabularyFromAI(
     throw new Error(`${message}${details}`);
   }
 
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid response received from server.');
-  }
-
-  // Client-side schema verification for safety
-  if (
-    typeof data.word !== 'string' ||
-    typeof data.meaning !== 'string' ||
-    typeof data.example !== 'string' ||
-    !Array.isArray(data.options) ||
-    data.options.length !== 4 ||
-    typeof data.correctIndex !== 'number'
-  ) {
-    throw new Error('Server returned malformed quiz structure.');
-  }
-
-  return {
-    word: data.word,
-    meaning: data.meaning,
-    example: data.example,
-    options: data.options as [string, string, string, string],
-    correctIndex: data.correctIndex,
-  };
+  return validateAiQuizResponse(data);
 }
-

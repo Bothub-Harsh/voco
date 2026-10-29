@@ -1,12 +1,15 @@
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import type { VocabularyWord } from '../types';
 
 const REMINDERS_KEY = 'my_vocab_reminders_enabled';
 const LAST_WORD_KEY = 'my_vocab_last_notified_id';
 const INTERVAL_KEY = 'my_vocab_reminder_interval_mins';
 const NEXT_TRIGGER_KEY = 'my_vocab_next_reminder_timestamp';
-export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (default)
+export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes default
 
 let reminderTimer: ReturnType<typeof setInterval> | null = null;
+let nativeListenersInitialized = false;
 
 function getStorageItem(key: string): string | null {
   if (typeof localStorage !== 'undefined') {
@@ -22,8 +25,14 @@ function setStorageItem(key: string, value: string): void {
 }
 
 /**
- * Gets the user-configured reminder interval in minutes.
- * Minimum allowed interval is 1 minute. Defaults to 5 minutes.
+ * Checks if running as a native Android or iOS application via Capacitor.
+ */
+export function isNativeApp(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+/**
+ * Gets user-configured reminder interval in minutes. Minimum 1 minute.
  */
 export function getSavedReminderInterval(): number {
   const saved = getStorageItem(INTERVAL_KEY);
@@ -33,8 +42,7 @@ export function getSavedReminderInterval(): number {
 }
 
 /**
- * Saves the user-configured reminder interval in minutes.
- * Enforces a strict minimum of 1 minute.
+ * Saves user-configured reminder interval in minutes.
  */
 export function setSavedReminderInterval(mins: number): number {
   const clamped = Math.max(1, Math.floor(mins));
@@ -66,7 +74,7 @@ export function setNextReminderTimestamp(timestamp: number | null): void {
 }
 
 /**
- * Formats total seconds into MM:SS string (e.g. 01:05, 00:30).
+ * Formats seconds into MM:SS string.
  */
 export function formatCountdownSeconds(totalSeconds: number): string {
   const clamped = Math.max(0, Math.floor(totalSeconds));
@@ -76,31 +84,102 @@ export function formatCountdownSeconds(totalSeconds: number): string {
 }
 
 /**
- * Checks whether the browser supports web notifications.
+ * Checks whether notifications are supported on this platform.
  */
 export function isNotificationSupported(): boolean {
+  if (Capacitor.isNativePlatform()) {
+    return true; // Native Capacitor local notifications are fully supported
+  }
   return typeof window !== 'undefined' && 'Notification' in window;
 }
 
 /**
- * Gets the current notification permission.
+ * Gets the current notification permission synchronously (or fallback for web).
  */
 export function getNotificationPermission(): NotificationPermission | 'unsupported' {
+  if (Capacitor.isNativePlatform()) {
+    // In Capacitor, check cached preference or assume default until async check completes
+    const cached = getStorageItem('capacitor_notif_granted');
+    if (cached === 'true') return 'granted';
+    if (cached === 'false') return 'denied';
+    return 'default';
+  }
   if (!isNotificationSupported()) return 'unsupported';
   return Notification.permission;
 }
 
 /**
- * Requests browser notification permission from the user.
+ * Checks permission status asynchronously on native platform or web.
+ */
+export async function checkNotificationPermissionAsync(): Promise<NotificationPermission | 'unsupported'> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const status = await LocalNotifications.checkPermissions();
+      if (status.display === 'granted') {
+        setStorageItem('capacitor_notif_granted', 'true');
+        return 'granted';
+      }
+      if (status.display === 'denied') {
+        setStorageItem('capacitor_notif_granted', 'false');
+        return 'denied';
+      }
+      return 'default';
+    } catch {
+      return 'default';
+    }
+  }
+
+  if (!isNotificationSupported()) return 'unsupported';
+  return Notification.permission;
+}
+
+/**
+ * Requests notification permission from user via native Android flow or web dialog.
  */
 export async function requestNotificationPermission(): Promise<boolean> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const status = await LocalNotifications.checkPermissions();
+      if (status.display === 'granted') {
+        setStorageItem('capacitor_notif_granted', 'true');
+        return true;
+      }
+      const requested = await LocalNotifications.requestPermissions();
+      const isGranted = requested.display === 'granted';
+      setStorageItem('capacitor_notif_granted', isGranted ? 'true' : 'false');
+      return isGranted;
+    } catch (err) {
+      console.warn('[Capacitor] Native permission request exception:', err);
+      return false;
+    }
+  }
+
   if (!isNotificationSupported()) return false;
   try {
     const permission = await Notification.requestPermission();
     return permission === 'granted';
   } catch (err) {
-    console.error('Failed to request notification permission:', err);
+    console.error('Failed to request web notification permission:', err);
     return false;
+  }
+}
+
+/**
+ * Initializes native notification interaction listener (when user taps notification).
+ */
+export function setupNotificationListeners(onOpenQuizForWordId: (wordId: string) => void): void {
+  if (Capacitor.isNativePlatform() && !nativeListenersInitialized) {
+    nativeListenersInitialized = true;
+    try {
+      LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction) => {
+        const wordId = notificationAction.notification.extra?.wordId;
+        if (wordId) {
+          onOpenQuizForWordId(String(wordId));
+        }
+      });
+    } catch (err) {
+      console.warn('[Capacitor] Could not register action listener:', err);
+    }
   }
 }
 
@@ -121,7 +200,6 @@ export function setRemindersActive(active: boolean): void {
 /**
  * Picks one word from the list to test.
  * Avoids picking the same word consecutively when 2 or more words exist.
- * Returns null if no words are available.
  */
 export function pickNextReminderWord(words: VocabularyWord[]): VocabularyWord | null {
   if (!words || words.length === 0) return null;
@@ -139,24 +217,48 @@ export function pickNextReminderWord(words: VocabularyWord[]): VocabularyWord | 
 
 /**
  * Dispatches a reminder notification for a specific word.
- * Title: "My Vocabulary — Practice Time!"
- * Body: "What does <WORD> mean?"
- * Never reveals the correct answer.
+ * Works natively on Android APK via Capacitor or in browser via Web Notifications.
  */
 export async function dispatchWordNotification(
   word: VocabularyWord,
   onOpenQuiz?: (word: VocabularyWord) => void
 ): Promise<boolean> {
+  const title = 'Voco — Practice Time!';
+  const body = `What does ${word.word.toUpperCase()} mean?`;
+
+  // 1. Native Android Capacitor notification
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const granted = await requestNotificationPermission();
+      if (!granted) return false;
+
+      const notifId = Math.floor(Math.random() * 900000) + 100000;
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: notifId,
+            title,
+            body,
+            extra: { wordId: word.id },
+            schedule: { at: new Date(Date.now() + 250), allowWhileIdle: true },
+          },
+        ],
+      });
+      return true;
+    } catch (err) {
+      console.error('[Capacitor] Failed to schedule native notification:', err);
+      return false;
+    }
+  }
+
+  // 2. Web browser notification
   if (!isNotificationSupported() || Notification.permission !== 'granted') {
     return false;
   }
 
-  const title = 'My Vocabulary — Practice Time!';
-  const body = `What does ${word.word.toUpperCase()} mean?`;
   const url = `/?quiz=${encodeURIComponent(word.id)}`;
 
   try {
-    // 1. Try via Service Worker if available (better background support)
     if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.ready.catch(() => null);
       if (registration && 'showNotification' in registration) {
@@ -171,7 +273,6 @@ export async function dispatchWordNotification(
       }
     }
 
-    // 2. Fallback to standard window Notification
     const notif = new Notification(title, {
       body,
       icon: '/icon.svg',
@@ -190,14 +291,13 @@ export async function dispatchWordNotification(
 
     return true;
   } catch (err) {
-    console.error('Error displaying notification:', err);
+    console.error('Error displaying web notification:', err);
     return false;
   }
 }
 
 /**
  * Starts the periodic reminder loop.
- * Triggers every 5 minutes (or custom interval).
  */
 export function startRemindersTimer(
   getWords: () => VocabularyWord[],
@@ -223,7 +323,7 @@ export function startRemindersTimer(
 }
 
 /**
- * Stops the reminder loop.
+ * Stops the reminder loop and cancels pending native notifications.
  */
 export function stopRemindersTimer(): void {
   if (reminderTimer) {
@@ -232,30 +332,14 @@ export function stopRemindersTimer(): void {
   }
   setRemindersActive(false);
   setNextReminderTimestamp(null);
-}
 
-/**
- * Native Android Capacitor bridge stub.
- * When the app is converted to Android using Capacitor, this can delegate to @capacitor/local-notifications.
- */
-export async function scheduleNativeCapacitorNotification(
-  word: VocabularyWord,
-  _scheduledDate: Date
-): Promise<void> {
-  const isCapacitor = Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })?.Capacitor?.isNativePlatform?.());
-
-  if (isCapacitor) {
-    console.log('[Capacitor] Scheduling native Android notification for word:', word.word);
-    // When @capacitor/local-notifications is added:
-    // import { LocalNotifications } from '@capacitor/local-notifications';
-    // await LocalNotifications.schedule({
-    //   notifications: [{
-    //     title: 'My Vocabulary — Practice Time!',
-    //     body: `What does ${word.word.toUpperCase()} mean?`,
-    //     id: Math.floor(Math.random() * 100000),
-    //     schedule: { at: scheduledDate, allowWhileIdle: true },
-    //     extra: { wordId: word.id }
-    //   }]
-    // });
+  if (Capacitor.isNativePlatform()) {
+    LocalNotifications.getPending()
+      .then((pending) => {
+        if (pending.notifications.length > 0) {
+          LocalNotifications.cancel({ notifications: pending.notifications }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }
 }

@@ -31,6 +31,7 @@ export interface BackendStatus {
   configured: boolean;
   model: string;
   message: string;
+  reachable: boolean;
 }
 
 export type SaveStatusState = 'idle' | 'saving' | 'saved' | 'error';

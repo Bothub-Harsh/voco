@@ -11,18 +11,26 @@ import {
   requestPersistentStorage,
   migrateFromLocalStorageIfPresent,
 } from './db/indexedDb';
-import { generateVocabularyFromAI, refreshVocabularyFromAI, checkBackendStatus } from './services/api';
+import {
+  generateVocabularyFromAI,
+  refreshVocabularyFromAI,
+  checkBackendStatus,
+  getApiBaseUrl,
+} from './services/api';
 import { generateFreshQuizSession } from './services/quizGenerator';
 import {
   isRemindersActive,
   requestNotificationPermission,
   getNotificationPermission,
+  checkNotificationPermissionAsync,
   pickNextReminderWord,
   dispatchWordNotification,
   getSavedReminderInterval,
   setSavedReminderInterval,
   getNextReminderTimestamp,
   setNextReminderTimestamp,
+  setupNotificationListeners,
+  isNativeApp,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { StorageStatusIndicator } from './components/StorageStatusIndicator';
@@ -139,8 +147,22 @@ export function App() {
     // Check backend proxy status
     checkBackendStatus().then(setBackendStatus);
 
+    // Check native notification permission on mount
+    checkNotificationPermissionAsync().then(setPermission);
+
+    // Setup native notification click listener
+    setupNotificationListeners(async (wordId) => {
+      const found = await getWordById(wordId);
+      if (found) {
+        openQuizForWord(found);
+      }
+    });
+
     // Online/offline listeners
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      checkBackendStatus().then(setBackendStatus);
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -425,16 +447,29 @@ export function App() {
     });
   };
 
+  const handleCheckBackend = async () => {
+    const status = await checkBackendStatus();
+    setBackendStatus(status);
+  };
+
   const handleStartReminders = async () => {
     const granted = await requestNotificationPermission();
-    setPermission(getNotificationPermission());
+    const currentPerm = await checkNotificationPermissionAsync();
+    setPermission(currentPerm);
+
     if (granted) {
       const target = Date.now() + reminderInterval * 60 * 1000;
       setNextReminderTimestamp(target);
       setSecondsRemaining(reminderInterval * 60);
       setRemindersActive(true);
     } else {
-      alert('Notification permission was not granted. Please allow notifications in your browser.');
+      if (isNativeApp()) {
+        alert(
+          'Notification permission was not granted. Please allow notifications for Voco in your Android Settings (Settings > Apps > Voco > Notifications).'
+        );
+      } else {
+        alert('Notification permission was not granted. Please allow notifications in your browser.');
+      }
     }
   };
 
@@ -446,9 +481,17 @@ export function App() {
 
   const handleTestNotification = async () => {
     const granted = await requestNotificationPermission();
-    setPermission(getNotificationPermission());
+    const currentPerm = await checkNotificationPermissionAsync();
+    setPermission(currentPerm);
+
     if (!granted) {
-      alert('Please enable browser notifications to test reminders.');
+      if (isNativeApp()) {
+        alert(
+          'Notification permission is disabled. Please allow notifications in Android Settings > Apps > Voco > Notifications to test reminders.'
+        );
+      } else {
+        alert('Please enable browser notifications to test reminders.');
+      }
       return;
     }
 
@@ -460,7 +503,11 @@ export function App() {
 
     const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
     if (!sent) {
-      alert('Could not deliver notification. Check your browser notification settings.');
+      if (isNativeApp()) {
+        alert('Could not deliver notification. Check your Android notification settings.');
+      } else {
+        alert('Could not deliver notification. Check your browser notification settings.');
+      }
     }
   };
 
@@ -473,22 +520,34 @@ export function App() {
       />
 
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 py-6">
-        {/* Backend API Key Alert Banner if needed */}
-        {backendStatus && !backendStatus.configured && (
-          <div className="mb-5 p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-amber-900 text-xs shadow-card">
-            <p className="font-bold text-amber-950 text-sm">
-              ⚡ Setup Required: Add your Groq API Key
+        {/* Backend Connectivity / API Key Status Banner */}
+        {backendStatus && !backendStatus.reachable && (
+          <div className="mb-5 p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs shadow-card flex items-start justify-between gap-3">
+            <div>
+              <p className="font-bold text-amber-950 text-sm">
+                Connecting to Vocabulary Server...
+              </p>
+              <p className="text-amber-800 mt-1 leading-relaxed">
+                The cloud AI backend ({getApiBaseUrl()}) is currently unreachable or spinning up (on free tier hosting, waking up takes ~20-30 seconds). You can still practice saved words and write your own meanings offline!
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCheckBackend}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors shadow-xs"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {backendStatus && backendStatus.reachable && !backendStatus.configured && (
+          <div className="mb-5 p-4 bg-rose-50/90 border border-rose-200/80 rounded-2xl text-rose-900 text-xs shadow-card">
+            <p className="font-bold text-rose-950 text-sm">
+              Backend Configuration Notice
             </p>
-            <p className="text-amber-800 mt-1 leading-relaxed">
-              To generate new words with Groq AI, open{' '}
-              <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-950 font-semibold">
-                .env
-              </code>{' '}
-              in the project folder and paste your key into{' '}
-              <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-950 font-semibold">
-                GROQ_API_KEY
-              </code>
-              . Saved words can still be quizzed offline anytime!
+            <p className="text-rose-800 mt-1 leading-relaxed">
+              The vocabulary server at <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
             </p>
           </div>
         )}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Bell, BellOff, Send, Clock, Info, SlidersHorizontal } from 'lucide-react';
 import type { VocabularyWord } from '../types';
-import { formatCountdownSeconds } from '../services/notifications';
+import { formatCountdownSeconds, isNativeApp } from '../services/notifications';
 
 interface ReminderControlsProps {
   remindersActive: boolean;
@@ -197,19 +197,29 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
 
       {/* Permission warning */}
       {permission === 'denied' && (
-        <div className="mt-3 p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-700 flex items-start space-x-2">
-          <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+        <div className="mt-3 p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-800 flex items-start space-x-2">
+          <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
-            Notifications are blocked. Click the padlock icon in the address bar to allow notifications.
+            {isNativeApp()
+              ? 'Notifications are disabled for Voco. Please allow notifications in Android Settings > Apps > Voco > Notifications to receive study reminders.'
+              : 'Notifications are blocked in your browser. Click the padlock icon in the address bar to allow notifications.'}
           </span>
         </div>
       )}
 
-      {/* Info note */}
+      {/* Platform info note */}
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-start space-x-2 text-[10px] text-slate-400 leading-relaxed">
         <Info className="w-3 h-3 text-slate-300 shrink-0 mt-0.5" />
         <p>
-          <strong className="text-slate-500">Note:</strong> Browsers throttle timers when tabs are backgrounded. Android APK via Capacitor uses native alarms for accurate delivery.
+          {isNativeApp() ? (
+            <span>
+              <strong className="text-slate-500">Android Practice Reminders:</strong> Native Android notifications deliver study prompts at your configured interval without requiring a browser.
+            </span>
+          ) : (
+            <span>
+              <strong className="text-slate-500">Browser note:</strong> Web browsers throttle timers when tabs are in the background. The installed Android APK uses native notifications.
+            </span>
+          )}
         </p>
       </div>
     </div>

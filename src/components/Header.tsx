@@ -59,14 +59,14 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* API key missing badge */}
-          {backendStatus && !backendStatus.configured && (
+          {/* API key missing badge (only when server is online but unconfigured) */}
+          {backendStatus && backendStatus.reachable && !backendStatus.configured && (
             <div
-              className="hidden sm:flex items-center px-2.5 py-1 rounded-full bg-slate-50 text-slate-500 border border-slate-200 text-[11px] font-medium"
-              title="Groq API key not yet configured in .env"
+              className="hidden sm:flex items-center px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200 text-[11px] font-medium"
+              title="Groq API key not configured on backend server"
             >
-              <KeyRound className="w-3 h-3 mr-1 text-slate-400" />
-              <span>Key needed</span>
+              <KeyRound className="w-3 h-3 mr-1 text-rose-400" />
+              <span>Key needed on server</span>
             </div>
           )}
         </div>
