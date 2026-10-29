@@ -142,7 +142,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5">
-              Groq AI will automatically create an easy definition, example sentence, and 4 quiz options.
+              Groq AI will automatically explain the word in simple English with an everyday example sentence.
             </p>
           </div>
         </form>

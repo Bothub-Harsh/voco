@@ -83,3 +83,86 @@ export async function generateVocabularyFromAI(word: string): Promise<WordQuizPa
   };
 }
 
+/**
+ * Calls backend Groq proxy to refresh an existing word's definition and example sentence
+ * with alternative wording.
+ */
+export async function refreshVocabularyFromAI(
+  word: string,
+  currentMeaning?: string,
+  currentExample?: string
+): Promise<WordQuizPayload> {
+  const cleanWord = word.trim();
+  if (!cleanWord) {
+    throw new Error('Please enter a word.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/vocabulary/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        word: cleanWord,
+        currentMeaning,
+        currentExample,
+        isRefresh: true,
+      }),
+    });
+
+    // Fallback to /api/vocabulary/generate with isRefresh flag if /api/vocabulary/refresh is not available
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE}/api/vocabulary/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          word: cleanWord,
+          currentMeaning,
+          currentExample,
+          isRefresh: true,
+        }),
+      });
+    }
+  } catch (err) {
+    throw new Error(
+      'Unable to connect to backend proxy. Please verify your internet connection and that the backend server is running.'
+    );
+  }
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message = data?.error || `Request failed with status ${response.status}`;
+    const details = data?.details ? ` (${data.details})` : '';
+    throw new Error(`${message}${details}`);
+  }
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid response received from server.');
+  }
+
+  // Client-side schema verification for safety
+  if (
+    typeof data.word !== 'string' ||
+    typeof data.meaning !== 'string' ||
+    typeof data.example !== 'string' ||
+    !Array.isArray(data.options) ||
+    data.options.length !== 4 ||
+    typeof data.correctIndex !== 'number'
+  ) {
+    throw new Error('Server returned malformed quiz structure.');
+  }
+
+  return {
+    word: data.word,
+    meaning: data.meaning,
+    example: data.example,
+    options: data.options as [string, string, string, string],
+    correctIndex: data.correctIndex,
+  };
+}
+

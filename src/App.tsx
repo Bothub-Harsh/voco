@@ -11,7 +11,7 @@ import {
   requestPersistentStorage,
   migrateFromLocalStorageIfPresent,
 } from './db/indexedDb';
-import { generateVocabularyFromAI, checkBackendStatus } from './services/api';
+import { generateVocabularyFromAI, refreshVocabularyFromAI, checkBackendStatus } from './services/api';
 import { generateFreshQuizSession } from './services/quizGenerator';
 import {
   isRemindersActive,
@@ -47,6 +47,9 @@ export function App() {
     getNotificationPermission()
   );
   const [isPersistent, setIsPersistent] = useState<boolean>(false);
+  const [refreshingWordId, setRefreshingWordId] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<{ wordId: string; message: string } | null>(null);
+  const [highlightedWordId, setHighlightedWordId] = useState<string | null>(null);
   const [storageStatus, setStorageStatus] = useState<StorageStatus>({
     state: 'idle',
     message: 'Initializing local database...',
@@ -256,8 +259,8 @@ export function App() {
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // 4. Open quiz for user to practice immediately with fresh randomized options
-      openQuizForWord(saved);
+      // Highlight the newly added word for the user to view its meaning and example
+      setHighlightedWordId(saved.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add word.';
       setErrorMessage(msg);
@@ -298,8 +301,8 @@ export function App() {
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // Open quiz for user to practice immediately with fresh randomized options
-      openQuizForWord(saved);
+      // Highlight the newly added word for the user
+      setHighlightedWordId(saved.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save manual word.';
       setErrorMessage(msg);
@@ -309,6 +312,57 @@ export function App() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Refresh word explanation action: generates fresh alternative wording and persists to IndexedDB
+  const handleRefreshWord = async (wordToRefresh: VocabularyWord) => {
+    setRefreshingWordId(wordToRefresh.id);
+    setRefreshError(null);
+
+    setStorageStatus({
+      state: 'saving',
+      message: `Generating new explanation for "${wordToRefresh.word}"...`,
+    });
+
+    try {
+      const refreshed = await refreshVocabularyFromAI(
+        wordToRefresh.word,
+        wordToRefresh.meaning,
+        wordToRefresh.example
+      );
+
+      const updatedWord: VocabularyWord = {
+        ...wordToRefresh,
+        meaning: refreshed.meaning,
+        example: refreshed.example,
+        options: refreshed.options,
+        correctIndex: refreshed.correctIndex,
+      };
+
+      await updateWord(updatedWord);
+      await refreshWords();
+
+      setStorageStatus({
+        state: 'saved',
+        message: `New explanation for "${wordToRefresh.word}" saved in IndexedDB`,
+        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to refresh explanation.';
+      setRefreshError({ wordId: wordToRefresh.id, message: msg });
+      setStorageStatus({
+        state: 'error',
+        message: `Refresh failed: ${msg}`,
+      });
+    } finally {
+      setRefreshingWordId(null);
+    }
+  };
+
+  const handleClearRefreshError = (wordId: string) => {
+    if (refreshError?.wordId === wordId) {
+      setRefreshError(null);
     }
   };
 
@@ -481,6 +535,11 @@ export function App() {
           onOpenQuiz={(word) => openQuizForWord(word)}
           onDeleteWord={handleDeleteWord}
           onUpdateWord={handleUpdateWord}
+          onRefreshWord={handleRefreshWord}
+          refreshingWordId={refreshingWordId}
+          refreshError={refreshError}
+          onClearRefreshError={handleClearRefreshError}
+          highlightedWordId={highlightedWordId}
         />
       </main>
 

@@ -61,9 +61,9 @@ app.get('/api/status', (req, res) => {
 });
 
 // Endpoint to generate beginner-friendly vocabulary quiz using Groq
-app.post('/api/vocabulary/generate', async (req, res) => {
+async function handleVocabularyGeneration(req, res) {
   try {
-    const { word } = req.body;
+    const { word, currentMeaning, currentExample, isRefresh } = req.body;
 
     if (!word || typeof word !== 'string' || !word.trim()) {
       return res.status(400).json({
@@ -86,14 +86,47 @@ app.post('/api/vocabulary/generate', async (req, res) => {
       });
     }
 
-    const prompt = `You are a beginner-friendly English vocabulary tutor.
+    const isRefreshing = Boolean(isRefresh || currentMeaning);
+
+    const prompt = isRefreshing
+      ? `You are an expert, beginner-friendly English vocabulary tutor.
+Target English word: "${cleanWord}"
+Previous explanation: "${currentMeaning || ''}"
+Previous example sentence: "${currentExample || ''}"
+
+Goal: Provide a FRESH, ALTERNATIVE explanation and example sentence for "${cleanWord}" using different wording. Do NOT repeat or simply paraphrase the previous explanation.
+
+Requirements:
+1. Provide the English word with proper capitalization.
+2. Provide an accurate, clear explanation in simple English written like a beginner's dictionary definition (easy to understand for an English learner, grammatically correct, concise).
+3. Provide one natural, fresh example sentence showing how the word is used in everyday English.
+4. Provide exactly four multiple-choice options (A, B, C, D) for what the word means.
+   - Exactly one option must be the correct meaning (matching the refreshed explanation).
+   - The other three options must be plausible but clearly incorrect alternate definitions.
+   - All four options must be distinct.
+5. Provide the correct answer index: 0 for 1st option, 1 for 2nd option, 2 for 3rd option, or 3 for 4th option.
+
+Respond ONLY with a valid JSON object matching this exact schema:
+{
+  "word": "${cleanWord}",
+  "meaning": "fresh simple definition in clear everyday English",
+  "example": "fresh natural example sentence",
+  "options": [
+    "option 1",
+    "option 2",
+    "option 3",
+    "option 4"
+  ],
+  "correctIndex": 1
+}`
+      : `You are an expert, beginner-friendly English vocabulary tutor.
 Target English word: "${cleanWord}"
 
 Requirements:
 1. Provide the English word with proper capitalization.
-2. Provide a very simple English meaning in a few words, using easy, everyday English suitable for a beginner.
-3. Provide one short example sentence using the word naturally.
-4. Provide exactly four multiple-choice options (A, B, C, D) for what the word means.
+2. Provide one accurate, easy-to-understand explanation in simple English, like a dictionary explanation written for a beginner (e.g. for "Discrimination": "Discrimination means treating someone unfairly or differently because of their identity, such as their caste, religion, gender, skin colour, or background."). Keep the explanation short, clear, and grammatically correct.
+3. Provide one natural example sentence showing how the word is used in everyday English (e.g. "Discrimination in the workplace is unfair and should not be allowed.").
+4. Provide exactly four multiple-choice options (A, B, C, D) for what the word means (for quiz practice).
    - Exactly one option must be the correct meaning.
    - The other three options must be plausible but clearly incorrect alternate definitions.
    - All four options must be distinct.
@@ -102,8 +135,8 @@ Requirements:
 Respond ONLY with a valid JSON object matching this exact schema:
 {
   "word": "${cleanWord}",
-  "meaning": "simple definition in few words",
-  "example": "one short example sentence",
+  "meaning": "simple dictionary-style definition in everyday English",
+  "example": "one natural example sentence",
   "options": [
     "option 1",
     "option 2",
@@ -131,14 +164,14 @@ Respond ONLY with a valid JSON object matching this exact schema:
               {
                 role: 'system',
                 content:
-                  'You are a vocabulary tutor. Output ONLY a valid JSON object with word, meaning, example, options (array of exactly 4 strings), and correctIndex (integer 0-3). No markdown fences, no explanatory text.',
+                  'You are a vocabulary tutor for beginners. Output ONLY a valid JSON object with word, meaning, example, options (array of exactly 4 strings), and correctIndex (integer 0-3). No markdown fences, no explanatory text.',
               },
               {
                 role: 'user',
                 content: prompt,
               },
             ],
-            temperature: 0.3,
+            temperature: isRefreshing ? 0.6 : 0.3,
             response_format: { type: 'json_object' },
           }),
         });
@@ -215,6 +248,15 @@ Respond ONLY with a valid JSON object matching this exact schema:
       details: message,
     });
   }
+}
+
+// Generate new word definition
+app.post('/api/vocabulary/generate', handleVocabularyGeneration);
+
+// Refresh existing word definition with fresh alternative wording
+app.post('/api/vocabulary/refresh', (req, res) => {
+  req.body.isRefresh = true;
+  return handleVocabularyGeneration(req, res);
 });
 
 // Serve frontend build if dist folder exists
