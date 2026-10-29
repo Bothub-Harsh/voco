@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickNextReminderWord, DEFAULT_INTERVAL_MS } from '../src/services/notifications';
+import {
+  pickNextReminderWord,
+  DEFAULT_INTERVAL_MS,
+  getSavedReminderInterval,
+  setSavedReminderInterval,
+  formatCountdownSeconds,
+  getNextReminderTimestamp,
+  setNextReminderTimestamp,
+} from '../src/services/notifications';
 import type { VocabularyWord } from '../src/types';
 
 describe('Reminder Selection & Notification Service', () => {
@@ -82,5 +90,39 @@ describe('Reminder Selection & Notification Service', () => {
     // Ensure the correct meaning is never in the notification body or title
     expect(body).not.toContain(word.meaning);
     expect(title).not.toContain(word.meaning);
+  });
+
+  it('enforces a minimum reminder interval of 1 minute', () => {
+    expect(setSavedReminderInterval(1)).toBe(1);
+    expect(getSavedReminderInterval()).toBe(1);
+
+    // Clamps values less than 1 to 1
+    expect(setSavedReminderInterval(0)).toBe(1);
+    expect(getSavedReminderInterval()).toBe(1);
+
+    expect(setSavedReminderInterval(-10)).toBe(1);
+    expect(getSavedReminderInterval()).toBe(1);
+
+    // Allows higher intervals
+    expect(setSavedReminderInterval(15)).toBe(15);
+    expect(getSavedReminderInterval()).toBe(15);
+  });
+
+  it('formats countdown seconds into MM:SS correctly', () => {
+    expect(formatCountdownSeconds(60)).toBe('01:00');
+    expect(formatCountdownSeconds(90)).toBe('01:30');
+    expect(formatCountdownSeconds(9)).toBe('00:09');
+    expect(formatCountdownSeconds(0)).toBe('00:00');
+    expect(formatCountdownSeconds(-5)).toBe('00:00');
+    expect(formatCountdownSeconds(300)).toBe('05:00');
+  });
+
+  it('stores and retrieves target reminder timestamps correctly', () => {
+    const future = Date.now() + 60000;
+    setNextReminderTimestamp(future);
+    expect(getNextReminderTimestamp()).toBe(future);
+
+    setNextReminderTimestamp(null);
+    expect(getNextReminderTimestamp()).toBeNull();
   });
 });

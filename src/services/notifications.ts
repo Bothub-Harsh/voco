@@ -2,7 +2,9 @@ import type { VocabularyWord } from '../types';
 
 const REMINDERS_KEY = 'my_vocab_reminders_enabled';
 const LAST_WORD_KEY = 'my_vocab_last_notified_id';
-export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const INTERVAL_KEY = 'my_vocab_reminder_interval_mins';
+const NEXT_TRIGGER_KEY = 'my_vocab_next_reminder_timestamp';
+export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (default)
 
 let reminderTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -17,6 +19,60 @@ function setStorageItem(key: string, value: string): void {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(key, value);
   }
+}
+
+/**
+ * Gets the user-configured reminder interval in minutes.
+ * Minimum allowed interval is 1 minute. Defaults to 5 minutes.
+ */
+export function getSavedReminderInterval(): number {
+  const saved = getStorageItem(INTERVAL_KEY);
+  if (!saved) return 5;
+  const parsed = parseInt(saved, 10);
+  return isNaN(parsed) || parsed < 1 ? 1 : parsed;
+}
+
+/**
+ * Saves the user-configured reminder interval in minutes.
+ * Enforces a strict minimum of 1 minute.
+ */
+export function setSavedReminderInterval(mins: number): number {
+  const clamped = Math.max(1, Math.floor(mins));
+  setStorageItem(INTERVAL_KEY, String(clamped));
+  return clamped;
+}
+
+/**
+ * Gets the timestamp in milliseconds when the next reminder is due.
+ */
+export function getNextReminderTimestamp(): number | null {
+  const saved = getStorageItem(NEXT_TRIGGER_KEY);
+  if (!saved) return null;
+  const parsed = parseInt(saved, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Sets or clears the target timestamp for the next reminder.
+ */
+export function setNextReminderTimestamp(timestamp: number | null): void {
+  if (timestamp === null) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(NEXT_TRIGGER_KEY);
+    }
+  } else {
+    setStorageItem(NEXT_TRIGGER_KEY, String(timestamp));
+  }
+}
+
+/**
+ * Formats total seconds into MM:SS string (e.g. 01:05, 00:30).
+ */
+export function formatCountdownSeconds(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.floor(totalSeconds));
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 /**
@@ -175,6 +231,7 @@ export function stopRemindersTimer(): void {
     reminderTimer = null;
   }
   setRemindersActive(false);
+  setNextReminderTimestamp(null);
 }
 
 /**

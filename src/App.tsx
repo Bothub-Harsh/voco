@@ -13,12 +13,14 @@ import {
 import { generateVocabularyFromAI, checkBackendStatus } from './services/api';
 import {
   isRemindersActive,
-  startRemindersTimer,
-  stopRemindersTimer,
   requestNotificationPermission,
   getNotificationPermission,
   pickNextReminderWord,
   dispatchWordNotification,
+  getSavedReminderInterval,
+  setSavedReminderInterval,
+  getNextReminderTimestamp,
+  setNextReminderTimestamp,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { StorageStatusIndicator } from './components/StorageStatusIndicator';
@@ -37,6 +39,8 @@ export function App() {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
   const [remindersActive, setRemindersActive] = useState<boolean>(isRemindersActive());
+  const [reminderInterval, setReminderInterval] = useState<number>(getSavedReminderInterval());
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
     getNotificationPermission()
   );
@@ -147,17 +151,61 @@ export function App() {
     };
   }, [refreshWords, checkUrlForQuiz]);
 
-  // Handle active reminder timers
+  // Handle active reminder timers and live second-by-second countdown
   useEffect(() => {
-    if (remindersActive) {
-      startRemindersTimer(
-        () => wordsRef.current,
-        (word) => setActiveQuizWord(word)
-      );
-    } else {
-      stopRemindersTimer();
+    if (!remindersActive) {
+      setSecondsRemaining(null);
+      return;
     }
-  }, [remindersActive]);
+
+    const intervalMs = reminderInterval * 60 * 1000;
+    let target = getNextReminderTimestamp();
+    const now = Date.now();
+
+    if (!target || target <= now) {
+      target = now + intervalMs;
+      setNextReminderTimestamp(target);
+    }
+
+    setSecondsRemaining(Math.max(0, Math.ceil((target - now) / 1000)));
+
+    const ticker = setInterval(() => {
+      const currentNow = Date.now();
+      const currentTarget = getNextReminderTimestamp() || (currentNow + intervalMs);
+      const diffMs = currentTarget - currentNow;
+      const secs = Math.max(0, Math.ceil(diffMs / 1000));
+      setSecondsRemaining(secs);
+
+      if (diffMs <= 0) {
+        // Time to trigger practice reminder!
+        const words = wordsRef.current;
+        const nextWord = pickNextReminderWord(words);
+        if (nextWord) {
+          dispatchWordNotification(nextWord, (w) => setActiveQuizWord(w));
+        }
+
+        // Schedule next reminder
+        const newTarget = Date.now() + intervalMs;
+        setNextReminderTimestamp(newTarget);
+        setSecondsRemaining(reminderInterval * 60);
+      }
+    }, 1000);
+
+    return () => clearInterval(ticker);
+  }, [remindersActive, reminderInterval]);
+
+  const handleChangeInterval = (newMinutes: number) => {
+    const clamped = Math.max(1, Math.floor(newMinutes));
+    setReminderInterval(clamped);
+    setSavedReminderInterval(clamped);
+
+    if (remindersActive) {
+      // Reset countdown to the new interval immediately
+      const newTarget = Date.now() + clamped * 60 * 1000;
+      setNextReminderTimestamp(newTarget);
+      setSecondsRemaining(clamped * 60);
+    }
+  };
 
   // Add word action: Generates content, validates, then awaits IndexedDB write before updating list
   const handleAddWord = async (inputWord: string) => {
@@ -275,6 +323,9 @@ export function App() {
     const granted = await requestNotificationPermission();
     setPermission(getNotificationPermission());
     if (granted) {
+      const target = Date.now() + reminderInterval * 60 * 1000;
+      setNextReminderTimestamp(target);
+      setSecondsRemaining(reminderInterval * 60);
       setRemindersActive(true);
     } else {
       alert('Notification permission was not granted. Please allow notifications in your browser.');
@@ -283,6 +334,8 @@ export function App() {
 
   const handleStopReminders = () => {
     setRemindersActive(false);
+    setSecondsRemaining(null);
+    setNextReminderTimestamp(null);
   };
 
   const handleTestNotification = async () => {
@@ -356,7 +409,7 @@ export function App() {
           onStatusChange={handleBackupStatusChange}
         />
 
-        {/* 3. 5-Minute Reminders Control */}
+        {/* 3. Practice Reminders Control with Time Adjustment & Live Countdown */}
         <ReminderControls
           remindersActive={remindersActive}
           onStartReminders={handleStartReminders}
@@ -364,6 +417,9 @@ export function App() {
           onTestNotification={handleTestNotification}
           words={words}
           permission={permission}
+          intervalMinutes={reminderInterval}
+          onChangeInterval={handleChangeInterval}
+          secondsRemaining={secondsRemaining}
         />
 
         {/* 4. Saved Words List */}

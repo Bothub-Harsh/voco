@@ -34,3 +34,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Android / Gradle build caches
+.gradle/
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+
