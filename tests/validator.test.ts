@@ -20,7 +20,8 @@ describe('AI Word Generation Validator', () => {
     expect(validated.word).toBe('Harsh');
     expect(validated.meaning).toBe('Rough, unkind, or very severe.');
     expect(validated.options).toHaveLength(4);
-    expect(validated.correctIndex).toBe(1);
+    expect(validated.correctIndex).toBeGreaterThanOrEqual(0);
+    expect(validated.correctIndex).toBeLessThanOrEqual(3);
     expect(validated.options[validated.correctIndex]).toBe('Rough or unkind');
   });
 

@@ -7,6 +7,13 @@ export interface VocabularyWord {
   options: [string, string, string, string];
   correctIndex: number;
   dateAdded: number;
+  isCustomMeaning?: boolean; // true if user wrote their own meaning
+}
+
+export interface ManualWordPayload {
+  word: string;
+  meaning: string;
+  example?: string;
 }
 
 export interface ActiveQuizSession {

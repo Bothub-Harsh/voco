@@ -3,6 +3,7 @@ import type { VocabularyWord, BackendStatus, StorageStatus, ActiveQuizSession } 
 import {
   getAllWords,
   saveWord,
+  saveManualWord,
   updateWord,
   deleteWord,
   getWordById,
@@ -276,6 +277,41 @@ export function App() {
     }
   };
 
+  // Add manual word action: saves user-written meaning and example directly to IndexedDB
+  const handleAddManualWord = async (inputWord: string, meaning: string, example?: string) => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    setLastFailedWord(null);
+
+    setStorageStatus({
+      state: 'saving',
+      message: `Writing "${inputWord}" to local IndexedDB...`,
+    });
+
+    try {
+      const saved = await saveManualWord({ word: inputWord, meaning, example });
+      await refreshWords();
+
+      setStorageStatus({
+        state: 'saved',
+        message: `"${saved.word}" saved locally in IndexedDB`,
+        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+
+      // Open quiz for user to practice immediately with fresh randomized options
+      openQuizForWord(saved);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save manual word.';
+      setErrorMessage(msg);
+      setStorageStatus({
+        state: 'error',
+        message: `Save failed: ${msg}`,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleUpdateWord = async (updated: VocabularyWord) => {
     setStorageStatus({
       state: 'saving',
@@ -409,9 +445,10 @@ export function App() {
           isPersistent={isPersistent}
         />
 
-        {/* 1. Add Word Form */}
+        {/* 1. Add Word Form (AI Generation or Manual Meaning) */}
         <AddWordForm
           onAddWord={handleAddWord}
+          onAddManualWord={handleAddManualWord}
           isLoading={isLoading}
           error={errorMessage}
           onRetry={handleRetry}

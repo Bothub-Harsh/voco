@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { VocabularyWord, WordQuizPayload } from '../types';
+import type { VocabularyWord, WordQuizPayload, ManualWordPayload } from '../types';
+import { BEGINNER_DISTRACTOR_POOL } from '../services/quizGenerator';
 
 interface MyVocabularyDBSchema extends DBSchema {
   words: {
@@ -130,6 +131,104 @@ export async function saveWord(payload: WordQuizPayload): Promise<VocabularyWord
     options: payload.options.map((opt) => opt.trim()) as [string, string, string, string],
     correctIndex: Number(payload.correctIndex),
     dateAdded: Date.now(),
+  };
+
+  try {
+    const tx = db.transaction('words', 'readwrite');
+    await tx.store.put(newWord);
+    await tx.done; // Ensure transaction completes
+    return newWord;
+  } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'QuotaExceededError') {
+      throw new Error('Browser storage quota exceeded. Please export a backup and delete unused words.');
+    }
+    throw new Error(`Failed to write word to IndexedDB: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Saves a manually entered vocabulary word into IndexedDB.
+ * Generates initial distinct distractors and randomizes the answer position.
+ * Prevents accidental duplicate entries (case-insensitive).
+ */
+export async function saveManualWord(payload: ManualWordPayload): Promise<VocabularyWord> {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Word data must be an object.');
+  }
+
+  const cleanWord = payload.word ? payload.word.trim() : '';
+  if (!cleanWord) {
+    throw new Error('Word spelling cannot be empty.');
+  }
+
+  const cleanMeaning = payload.meaning ? payload.meaning.trim() : '';
+  if (!cleanMeaning) {
+    throw new Error('Word meaning cannot be empty.');
+  }
+
+  const cleanExample = payload.example?.trim() || `Example: "${cleanWord}" is used in everyday conversation.`;
+
+  const db = await getDB();
+  const wordLower = cleanWord.toLowerCase();
+
+  // Check duplicate
+  const existing = await getWordByName(wordLower);
+  if (existing) {
+    throw new Error(`"${cleanWord}" is already in your vocabulary list.`);
+  }
+
+  // Gather distractors for initial quiz options
+  const allWords = await getAllWords();
+  const distractors: string[] = [];
+  const seenNorm = new Set<string>();
+  const norm = (s: string) => s.trim().toLowerCase().replace(/[.,!?;:'"()[\]{}]/g, '');
+  seenNorm.add(norm(cleanMeaning));
+
+  // 1. From other saved words
+  for (const w of allWords) {
+    const wNorm = norm(w.meaning);
+    if (!seenNorm.has(wNorm)) {
+      seenNorm.add(wNorm);
+      distractors.push(w.meaning.trim());
+      if (distractors.length >= 3) break;
+    }
+  }
+
+  // 2. From beginner distractor pool
+  if (distractors.length < 3) {
+    for (const poolItem of BEGINNER_DISTRACTOR_POOL) {
+      const pNorm = norm(poolItem);
+      if (!seenNorm.has(pNorm)) {
+        seenNorm.add(pNorm);
+        distractors.push(poolItem);
+        if (distractors.length >= 3) break;
+      }
+    }
+  }
+
+  // Combine and shuffle choices
+  const choices = [cleanMeaning, distractors[0], distractors[1], distractors[2]];
+  for (let i = choices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+  }
+
+  const correctIndex = choices.indexOf(cleanMeaning);
+
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `word_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+  const newWord: VocabularyWord = {
+    id,
+    word: cleanWord,
+    wordLower,
+    meaning: cleanMeaning,
+    example: cleanExample,
+    options: choices as [string, string, string, string],
+    correctIndex,
+    dateAdded: Date.now(),
+    isCustomMeaning: true,
   };
 
   try {

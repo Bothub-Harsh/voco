@@ -93,6 +93,11 @@ export const WordList: React.FC<WordListProps> = ({
                     <Calendar className="w-3 h-3 mr-1" />
                     {dateStr}
                   </span>
+                  {item.isCustomMeaning && (
+                    <span className="inline-flex items-center text-[10px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100">
+                      My Meaning
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-slate-600 mt-1 line-clamp-2">
                   {item.meaning}

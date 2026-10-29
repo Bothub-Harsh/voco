@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   saveWord,
+  saveManualWord,
   getAllWords,
   getWordByName,
   getWordById,
@@ -226,5 +227,58 @@ describe('IndexedDB Local Storage & Backup Engine', () => {
 
     // Verify localStorage data was NOT deleted or cleared
     expect(localStorage.getItem('my_vocabulary_words')).toBeTruthy();
+  });
+
+  it('10. Saves a manual word with user-written meaning and example correctly into IndexedDB', async () => {
+    const manualSaved = await saveManualWord({
+      word: 'Resilient',
+      meaning: 'Able to recover quickly from difficult conditions.',
+      example: 'She remained resilient in the face of hardship.',
+    });
+
+    expect(manualSaved.id).toBeDefined();
+    expect(manualSaved.word).toBe('Resilient');
+    expect(manualSaved.wordLower).toBe('resilient');
+    expect(manualSaved.meaning).toBe('Able to recover quickly from difficult conditions.');
+    expect(manualSaved.example).toBe('She remained resilient in the face of hardship.');
+    expect(manualSaved.isCustomMeaning).toBe(true);
+    expect(manualSaved.options).toHaveLength(4);
+    expect(manualSaved.options[manualSaved.correctIndex]).toBe('Able to recover quickly from difficult conditions.');
+
+    // Verify it persists in IndexedDB
+    const fromDb = await getWordById(manualSaved.id);
+    expect(fromDb?.word).toBe('Resilient');
+    expect(fromDb?.meaning).toBe('Able to recover quickly from difficult conditions.');
+  });
+
+  it('11. Prevents saving manual words with empty word or meaning, and prevents duplicates', async () => {
+    // Empty word
+    await expect(
+      saveManualWord({ word: '', meaning: 'Some meaning' })
+    ).rejects.toThrow('Word spelling cannot be empty.');
+
+    // Empty meaning
+    await expect(
+      saveManualWord({ word: 'Word', meaning: '   ' })
+    ).rejects.toThrow('Word meaning cannot be empty.');
+
+    // Save initial
+    await saveManualWord({ word: 'Audacious', meaning: 'Willing to take bold risks.' });
+
+    // Duplicate check
+    await expect(
+      saveManualWord({ word: 'audacious', meaning: 'Different meaning' })
+    ).rejects.toThrow('"audacious" is already in your vocabulary list.');
+  });
+
+  it('12. Allows optional example sentence for manual words', async () => {
+    const saved = await saveManualWord({
+      word: 'Tenacious',
+      meaning: 'Holding fast or keeping a firm grip.',
+    });
+
+    expect(saved.example).toBeDefined();
+    expect(saved.example.length).toBeGreaterThan(0);
+    expect(saved.meaning).toBe('Holding fast or keeping a firm grip.');
   });
 });
