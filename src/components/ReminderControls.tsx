@@ -115,7 +115,7 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
             onClick={onTestNotification}
             disabled={!hasWords}
             className="inline-flex items-center px-3.5 py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-xl transition-all"
-            title="Test browser notification"
+            title={isNativeApp() ? 'Test Android notification' : 'Test browser notification'}
           >
             <Send className="w-3 h-3 mr-1.5 text-indigo-500" />
             <span>Test</span>

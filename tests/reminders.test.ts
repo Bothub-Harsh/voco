@@ -125,4 +125,13 @@ describe('Reminder Selection & Notification Service', () => {
     setNextReminderTimestamp(null);
     expect(getNextReminderTimestamp()).toBeNull();
   });
+
+  it('manages reminders active state correctly', async () => {
+    const { isRemindersActive, setRemindersActive } = await import('../src/services/notifications');
+    setRemindersActive(true);
+    expect(isRemindersActive()).toBe(true);
+
+    setRemindersActive(false);
+    expect(isRemindersActive()).toBe(false);
+  });
 });

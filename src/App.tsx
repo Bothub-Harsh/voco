@@ -20,6 +20,7 @@ import {
 import { generateFreshQuizSession } from './services/quizGenerator';
 import {
   isRemindersActive,
+  setRemindersActive as persistRemindersActive,
   requestNotificationPermission,
   getNotificationPermission,
   checkNotificationPermissionAsync,
@@ -31,6 +32,10 @@ import {
   setNextReminderTimestamp,
   setupNotificationListeners,
   isNativeApp,
+  scheduleNativeReminders,
+  cancelAllNativeReminders,
+  scheduleTestNotification,
+  getPendingNativeReminderCount,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { StorageStatusIndicator } from './components/StorageStatusIndicator';
@@ -48,7 +53,7 @@ export function App() {
   const [lastFailedWord, setLastFailedWord] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
-  const [remindersActive, setRemindersActive] = useState<boolean>(isRemindersActive());
+  const [remindersActive, setRemindersActiveState] = useState<boolean>(isRemindersActive());
   const [reminderInterval, setReminderInterval] = useState<number>(getSavedReminderInterval());
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
@@ -138,6 +143,18 @@ export function App() {
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
+      // Check if reminders are active on native platform and top up scheduled notifications if needed
+      if (isRemindersActive() && isNativeApp() && loaded.length > 0) {
+        try {
+          const pendingCount = await getPendingNativeReminderCount();
+          if (pendingCount < 5) {
+            await scheduleNativeReminders(loaded, getSavedReminderInterval());
+          }
+        } catch (e) {
+          console.warn('[Voco] Top up native reminders check failed:', e);
+        }
+      }
+
       // 5. Check if quiz was requested via URL query param
       checkUrlForQuiz();
     };
@@ -193,7 +210,7 @@ export function App() {
     };
   }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
 
-  // Handle active reminder timers and live second-by-second countdown
+  // Handle active reminder timers and visual countdown
   useEffect(() => {
     if (!remindersActive) {
       setSecondsRemaining(null);
@@ -219,24 +236,34 @@ export function App() {
       setSecondsRemaining(secs);
 
       if (diffMs <= 0) {
-        // Time to trigger practice reminder!
-        const words = wordsRef.current;
-        const nextWord = pickNextReminderWord(words);
-        if (nextWord) {
-          dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
-        }
-
-        // Schedule next reminder
+        // Schedule next visual countdown target
         const newTarget = Date.now() + intervalMs;
         setNextReminderTimestamp(newTarget);
         setSecondsRemaining(reminderInterval * 60);
+
+        // On browser web: trigger browser notification via JS timer
+        // On native Android: notifications are scheduled natively with Android AlarmManager
+        if (!isNativeApp()) {
+          const words = wordsRef.current;
+          const nextWord = pickNextReminderWord(words);
+          if (nextWord) {
+            dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
+          }
+        } else {
+          // On native Android: check if pending notifications are running low, top up
+          getPendingNativeReminderCount().then((count) => {
+            if (count < 4 && wordsRef.current.length > 0) {
+              scheduleNativeReminders(wordsRef.current, reminderInterval);
+            }
+          });
+        }
       }
     }, 1000);
 
     return () => clearInterval(ticker);
   }, [remindersActive, reminderInterval, openQuizForWord]);
 
-  const handleChangeInterval = (newMinutes: number) => {
+  const handleChangeInterval = async (newMinutes: number) => {
     const clamped = Math.max(1, Math.floor(newMinutes));
     setReminderInterval(clamped);
     setSavedReminderInterval(clamped);
@@ -246,6 +273,11 @@ export function App() {
       const newTarget = Date.now() + clamped * 60 * 1000;
       setNextReminderTimestamp(newTarget);
       setSecondsRemaining(clamped * 60);
+
+      // On native platform, re-schedule future alarms with the updated interval
+      if (isNativeApp() && wordsRef.current.length > 0) {
+        await scheduleNativeReminders(wordsRef.current, clamped);
+      }
     }
   };
 
@@ -273,7 +305,12 @@ export function App() {
       const saved = await saveWord(generated);
 
       // 3. Update React state by re-reading directly from IndexedDB (source of truth)
-      await refreshWords();
+      const updatedList = await refreshWords();
+
+      // Top-up or refresh scheduled native reminders with new word included
+      if (isRemindersActive() && isNativeApp() && updatedList.length > 0) {
+        scheduleNativeReminders(updatedList, reminderInterval).catch(() => {});
+      }
 
       setStorageStatus({
         state: 'saved',
@@ -315,7 +352,12 @@ export function App() {
 
     try {
       const saved = await saveManualWord({ word: inputWord, meaning, example });
-      await refreshWords();
+      const updatedList = await refreshWords();
+
+      // Top-up or refresh scheduled native reminders with new word included
+      if (isRemindersActive() && isNativeApp() && updatedList.length > 0) {
+        scheduleNativeReminders(updatedList, reminderInterval).catch(() => {});
+      }
 
       setStorageStatus({
         state: 'saved',
@@ -420,7 +462,18 @@ export function App() {
 
     try {
       await deleteWord(id);
-      await refreshWords();
+      const remainingWords = await refreshWords();
+
+      // If reminders active, refresh scheduled notifications or stop if no words left
+      if (isRemindersActive() && isNativeApp()) {
+        if (remainingWords.length > 0) {
+          scheduleNativeReminders(remainingWords, reminderInterval).catch(() => {});
+        } else {
+          cancelAllNativeReminders().catch(() => {});
+          persistRemindersActive(false);
+          setRemindersActiveState(false);
+        }
+      }
       setStorageStatus({
         state: 'saved',
         message: `"${wordSpelling}" deleted from IndexedDB`,
@@ -453,15 +506,26 @@ export function App() {
   };
 
   const handleStartReminders = async () => {
+    if (wordsRef.current.length === 0) {
+      alert('Save at least one word first before starting reminders.');
+      return;
+    }
+
     const granted = await requestNotificationPermission();
     const currentPerm = await checkNotificationPermissionAsync();
     setPermission(currentPerm);
 
     if (granted) {
+      persistRemindersActive(true);
+      setRemindersActiveState(true);
+
       const target = Date.now() + reminderInterval * 60 * 1000;
       setNextReminderTimestamp(target);
       setSecondsRemaining(reminderInterval * 60);
-      setRemindersActive(true);
+
+      if (isNativeApp()) {
+        await scheduleNativeReminders(wordsRef.current, reminderInterval);
+      }
     } else {
       if (isNativeApp()) {
         alert(
@@ -473,10 +537,15 @@ export function App() {
     }
   };
 
-  const handleStopReminders = () => {
-    setRemindersActive(false);
+  const handleStopReminders = async () => {
+    persistRemindersActive(false);
+    setRemindersActiveState(false);
     setSecondsRemaining(null);
     setNextReminderTimestamp(null);
+
+    if (isNativeApp()) {
+      await cancelAllNativeReminders();
+    }
   };
 
   const handleTestNotification = async () => {
@@ -501,11 +570,14 @@ export function App() {
       return;
     }
 
-    const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
-    if (!sent) {
-      if (isNativeApp()) {
+    if (isNativeApp()) {
+      const scheduled = await scheduleTestNotification(nextWord);
+      if (!scheduled) {
         alert('Could not deliver notification. Check your Android notification settings.');
-      } else {
+      }
+    } else {
+      const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
+      if (!sent) {
         alert('Could not deliver notification. Check your browser notification settings.');
       }
     }
