@@ -465,27 +465,27 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-800">
       <Header
         isOnline={isOnline}
         backendStatus={backendStatus}
         savedWordsCount={words.length}
       />
 
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-6">
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 py-6">
         {/* Backend API Key Alert Banner if needed */}
         {backendStatus && !backendStatus.configured && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-sm">
-            <p className="font-semibold text-amber-950">
+          <div className="mb-5 p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-amber-900 text-xs shadow-card">
+            <p className="font-bold text-amber-950 text-sm">
               ⚡ Setup Required: Add your Groq API Key
             </p>
-            <p className="text-xs text-amber-800 mt-1">
+            <p className="text-amber-800 mt-1 leading-relaxed">
               To generate new words with Groq AI, open{' '}
-              <code className="bg-amber-100/80 px-1.5 py-0.5 rounded font-mono text-amber-950">
+              <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-950 font-semibold">
                 .env
               </code>{' '}
               in the project folder and paste your key into{' '}
-              <code className="bg-amber-100/80 px-1.5 py-0.5 rounded font-mono text-amber-950">
+              <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-950 font-semibold">
                 GROQ_API_KEY
               </code>
               . Saved words can still be quizzed offline anytime!
@@ -553,8 +553,9 @@ export function App() {
       )}
 
       {/* Clean Footer */}
-      <footer className="border-t border-slate-200 py-4 text-center text-xs text-slate-400">
-        <p>My Vocabulary &bull; Stored locally in IndexedDB &bull; Groq AI</p>
+      <footer className="border-t border-slate-200/80 py-6 text-center text-xs text-slate-400 bg-white/50">
+        <p className="font-semibold text-slate-600">Voco &bull; My Vocabulary</p>
+        <p className="text-[11px] text-slate-400 mt-1">Stored locally in IndexedDB &bull; Powered by Groq AI</p>
       </footer>
     </div>
   );

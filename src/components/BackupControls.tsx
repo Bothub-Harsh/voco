@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Download, Upload, Info, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, Info, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { exportBackupJson, importBackupJson } from '../db/indexedDb';
 
 interface BackupControlsProps {
@@ -26,7 +26,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
       const now = new Date().toISOString().split('T')[0];
       const link = document.createElement('a');
       link.href = url;
-      link.download = `my-vocabulary-backup-${now}.json`;
+      link.download = `voco-vocabulary-backup-${now}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -55,7 +55,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           result.importedCount === 1 ? '' : 's'
         }.`;
         if (result.skippedCount > 0) {
-          summaryMsg += ` ${result.skippedCount} duplicate word${
+          summaryMsg += ` ${result.skippedCount} duplicate${
             result.skippedCount === 1 ? '' : 's'
           } skipped.`;
         }
@@ -81,12 +81,12 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-4 mb-6">
+    <div className="bg-white rounded-2xl shadow-card border border-slate-200/80 p-4 sm:p-5 mb-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center space-x-1.5">
-            <h3 className="text-sm font-semibold text-slate-800">
-              Local Backup &amp; Restore
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+              Backup &amp; Restore
             </h3>
             <button
               type="button"
@@ -98,8 +98,8 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
               <Info className="w-3.5 h-3.5" />
             </button>
           </div>
-          <p className="text-xs text-slate-500">
-            Export your vocabulary to JSON or restore words on any device.
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Export vocabulary to JSON or restore on any device.
           </p>
         </div>
 
@@ -108,11 +108,11 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
             type="button"
             onClick={handleExport}
             disabled={totalWords === 0}
-            className="inline-flex items-center px-3 py-1.5 border border-slate-300 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-xl transition-all shadow-2xs"
+            className="inline-flex items-center px-3.5 py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-xl transition-all"
             title={totalWords === 0 ? 'Save at least one word to export' : 'Download JSON backup'}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
-            <span>Export Words (JSON)</span>
+            <Download className="w-3.5 h-3.5 mr-1.5 text-indigo-500" />
+            <span>Export</span>
           </button>
 
           <input
@@ -126,18 +126,37 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-2xs"
+            className="inline-flex items-center px-3.5 py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl transition-all"
             title="Import and validate a JSON backup file"
           >
-            <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
-            <span>Import Backup</span>
+            <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+            <span>Import</span>
           </button>
         </div>
       </div>
 
-      {/* Import Feedback */}
+      {/* Info panel */}
+      {showInfo && (
+        <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+          <p className="font-semibold text-slate-700 mb-1">About your vocabulary data</p>
+          <p>
+            Your words are stored locally in your browser's IndexedDB. They survive page refreshes, browser closure, and restarts.
+            However, clearing your browser's site data will delete them. Export backups regularly to keep your vocabulary safe.
+            Local data does not sync between browsers or devices automatically.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowInfo(false)}
+            className="mt-2 text-indigo-600 hover:text-indigo-800 font-semibold"
+          >
+            Got it
+          </button>
+        </div>
+      )}
+
+      {/* Import success */}
       {importSummary && (
-        <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
+        <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{importSummary}</span>
@@ -145,15 +164,16 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={() => setImportSummary(null)}
-            className="text-emerald-700 hover:text-emerald-900 font-bold ml-2"
+            className="text-emerald-600 hover:text-emerald-800 p-0.5 rounded"
           >
-            &times;
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
+      {/* Import error */}
       {importError && (
-        <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+        <div className="mt-3 p-3 bg-rose-50 border border-rose-200/80 rounded-xl text-xs text-rose-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{importError}</span>
@@ -161,34 +181,10 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={() => setImportError(null)}
-            className="text-rose-700 hover:text-rose-900 font-bold ml-2"
+            className="text-rose-600 hover:text-rose-800 p-0.5 rounded"
           >
-            &times;
+            <X className="w-3.5 h-3.5" />
           </button>
-        </div>
-      )}
-
-      {/* Storage Limitation Explanatory Callout */}
-      {showInfo && (
-        <div className="mt-3.5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1.5 leading-relaxed">
-          <p className="font-semibold text-slate-800 flex items-center">
-            <Info className="w-4 h-4 mr-1.5 text-indigo-600" />
-            Important Note on Browser-Local Storage:
-          </p>
-          <p>
-            Your vocabulary is stored directly on your computer inside this browser&apos;s <strong>IndexedDB</strong> database. It persists across browser restarts and computer reboots.
-          </p>
-          <ul className="list-disc pl-4 space-y-1 text-slate-600">
-            <li>
-              <strong>Browser Profile Origin:</strong> Your data belongs to this specific browser and URL origin. It does not automatically synchronize to other browsers or computers.
-            </li>
-            <li>
-              <strong>Clear Site Data:</strong> Clearing browser cookies, history, and offline website data can wipe IndexedDB.
-            </li>
-            <li>
-              <strong>Best Practice:</strong> Use <strong>Export Words (JSON)</strong> regularly to save a copy of your vocabulary to your Documents or cloud drive. You can restore it anytime with <strong>Import Backup</strong>.
-            </li>
-          </ul>
         </div>
       )}
     </div>
