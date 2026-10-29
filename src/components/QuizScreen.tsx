@@ -1,19 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, CheckCircle2, XCircle, RotateCcw, Volume2, Sparkles } from 'lucide-react';
-import type { VocabularyWord } from '../types';
+import type { ActiveQuizSession } from '../types';
 
 interface QuizScreenProps {
-  word: VocabularyWord;
+  quiz: ActiveQuizSession;
   onClose: () => void;
+  onTryAgain: () => void;
 }
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
-export const QuizScreen: React.FC<QuizScreenProps> = ({ word, onClose }) => {
+export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgain }) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
 
-  const isCorrect = selectedIndex !== null && selectedIndex === word.correctIndex;
+  // Reset local state if a new quiz session is provided
+  useEffect(() => {
+    setSelectedIndex(null);
+    setHasSubmitted(false);
+  }, [quiz]);
+
+  const isCorrect = selectedIndex !== null && selectedIndex === quiz.correctIndex;
 
   const handleSelectOption = (index: number) => {
     if (hasSubmitted) return; // Prevent selection changes after submission
@@ -28,12 +35,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ word, onClose }) => {
   const handleTryAgain = () => {
     setSelectedIndex(null);
     setHasSubmitted(false);
+    onTryAgain();
   };
 
   const speakWord = () => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(word.word);
+      const utterance = new SpeechSynthesisUtterance(quiz.word);
       utterance.lang = 'en-US';
       window.speechSynthesis.speak(utterance);
     }
@@ -61,7 +69,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ word, onClose }) => {
         <div className="text-center mb-6">
           <div className="inline-flex items-center space-x-2">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 capitalize tracking-tight">
-              {word.word}
+              {quiz.word}
             </h2>
             {'speechSynthesis' in window && (
               <button
@@ -82,10 +90,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ word, onClose }) => {
 
         {/* 4 Multiple Choice Options */}
         <div className="space-y-3 mb-6">
-          {word.options.map((option, index) => {
+          {quiz.options.map((option, index) => {
             const letter = OPTION_LETTERS[index];
             const isSelected = selectedIndex === index;
-            const isThisOptionCorrect = index === word.correctIndex;
+            const isThisOptionCorrect = index === quiz.correctIndex;
 
             // Compute styling based on submission status
             let cardClasses = 'border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/40 text-slate-800';
@@ -174,10 +182,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ word, onClose }) => {
                 </p>
                 <p className="mt-1 leading-relaxed">
                   <strong className="text-slate-900">Correct meaning:</strong>{' '}
-                  {word.meaning}
+                  {quiz.meaning}
                 </p>
                 <p className="mt-2 text-xs italic text-slate-700 bg-white/70 p-2.5 rounded-lg border border-slate-200">
-                  <strong>Example:</strong> &ldquo;{word.example}&rdquo;
+                  <strong>Example:</strong> &ldquo;{quiz.example}&rdquo;
                 </p>
               </div>
             </div>

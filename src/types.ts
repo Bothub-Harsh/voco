@@ -9,6 +9,15 @@ export interface VocabularyWord {
   dateAdded: number;
 }
 
+export interface ActiveQuizSession {
+  wordId: string;
+  word: string;
+  meaning: string;
+  example: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+}
+
 export type WordQuizPayload = Omit<VocabularyWord, 'id' | 'dateAdded' | 'wordLower'>;
 
 export interface BackendStatus {

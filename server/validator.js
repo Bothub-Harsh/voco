@@ -43,12 +43,21 @@ export function validateVocabularyPayload(raw) {
     throw new Error('correctIndex must be an integer between 0 and 3.');
   }
 
+  // Randomize the answer position so correct answer never always appears as option A (index 0)
+  const correctOptionText = cleanOptions[parsedIndex];
+  const shuffledOptions = [...cleanOptions];
+  for (let i = shuffledOptions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledOptions[i], shuffledOptions[j]] = [shuffledOptions[j], shuffledOptions[i]];
+  }
+  const randomizedCorrectIndex = shuffledOptions.indexOf(correctOptionText);
+
   return {
     word: word.trim(),
     meaning: meaning.trim(),
     example: example.trim(),
-    options: cleanOptions,
-    correctIndex: parsedIndex,
+    options: shuffledOptions,
+    correctIndex: randomizedCorrectIndex,
   };
 }
 

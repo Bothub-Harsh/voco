@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { VocabularyWord, BackendStatus, StorageStatus } from './types';
+import type { VocabularyWord, BackendStatus, StorageStatus, ActiveQuizSession } from './types';
 import {
   getAllWords,
   saveWord,
@@ -11,6 +11,7 @@ import {
   migrateFromLocalStorageIfPresent,
 } from './db/indexedDb';
 import { generateVocabularyFromAI, checkBackendStatus } from './services/api';
+import { generateFreshQuizSession } from './services/quizGenerator';
 import {
   isRemindersActive,
   requestNotificationPermission,
@@ -32,7 +33,7 @@ import { QuizScreen } from './components/QuizScreen';
 
 export function App() {
   const [words, setWords] = useState<VocabularyWord[]>([]);
-  const [activeQuizWord, setActiveQuizWord] = useState<VocabularyWord | null>(null);
+  const [activeQuizSession, setActiveQuizSession] = useState<ActiveQuizSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedWord, setLastFailedWord] = useState<string | null>(null);
@@ -70,6 +71,21 @@ export function App() {
     }
   }, []);
 
+  // Opens a fresh randomized quiz session for a saved word
+  const openQuizForWord = useCallback((word: VocabularyWord) => {
+    const freshSession = generateFreshQuizSession(word, wordsRef.current);
+    setActiveQuizSession(freshSession);
+  }, []);
+
+  // Generates a fresh set of options and distractors for another quiz attempt on the same word
+  const handleTryAgainQuiz = useCallback((wordId: string) => {
+    const currentWord = wordsRef.current.find((w) => w.id === wordId);
+    if (currentWord) {
+      const freshSession = generateFreshQuizSession(currentWord, wordsRef.current);
+      setActiveQuizSession(freshSession);
+    }
+  }, []);
+
   // Check URL params for ?quiz=<id> (from notifications)
   const checkUrlForQuiz = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -77,11 +93,11 @@ export function App() {
     if (quizId) {
       const found = await getWordById(quizId);
       if (found) {
-        setActiveQuizWord(found);
+        openQuizForWord(found);
       }
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, []);
+  }, [openQuizForWord]);
 
   useEffect(() => {
     const initializeStorage = async () => {
@@ -131,7 +147,7 @@ export function App() {
       if (customEvent.detail?.wordId) {
         const found = await getWordById(customEvent.detail.wordId);
         if (found) {
-          setActiveQuizWord(found);
+          openQuizForWord(found);
         }
       }
     };
@@ -149,7 +165,7 @@ export function App() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
     };
-  }, [refreshWords, checkUrlForQuiz]);
+  }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
 
   // Handle active reminder timers and live second-by-second countdown
   useEffect(() => {
@@ -181,7 +197,7 @@ export function App() {
         const words = wordsRef.current;
         const nextWord = pickNextReminderWord(words);
         if (nextWord) {
-          dispatchWordNotification(nextWord, (w) => setActiveQuizWord(w));
+          dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
         }
 
         // Schedule next reminder
@@ -192,7 +208,7 @@ export function App() {
     }, 1000);
 
     return () => clearInterval(ticker);
-  }, [remindersActive, reminderInterval]);
+  }, [remindersActive, reminderInterval, openQuizForWord]);
 
   const handleChangeInterval = (newMinutes: number) => {
     const clamped = Math.max(1, Math.floor(newMinutes));
@@ -239,8 +255,8 @@ export function App() {
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // 4. Open quiz for user to practice immediately
-      setActiveQuizWord(saved);
+      // 4. Open quiz for user to practice immediately with fresh randomized options
+      openQuizForWord(saved);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add word.';
       setErrorMessage(msg);
@@ -298,8 +314,8 @@ export function App() {
         message: `"${wordSpelling}" deleted from IndexedDB`,
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
-      if (activeQuizWord?.id === id) {
-        setActiveQuizWord(null);
+      if (activeQuizSession?.wordId === id) {
+        setActiveQuizSession(null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Delete failed';
@@ -352,7 +368,7 @@ export function App() {
       return;
     }
 
-    const sent = await dispatchWordNotification(nextWord, (w) => setActiveQuizWord(w));
+    const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
     if (!sent) {
       alert('Could not deliver notification. Check your browser notification settings.');
     }
@@ -425,17 +441,18 @@ export function App() {
         {/* 4. Saved Words List */}
         <WordList
           words={words}
-          onOpenQuiz={(word) => setActiveQuizWord(word)}
+          onOpenQuiz={(word) => openQuizForWord(word)}
           onDeleteWord={handleDeleteWord}
           onUpdateWord={handleUpdateWord}
         />
       </main>
 
       {/* Quiz Modal / Screen */}
-      {activeQuizWord && (
+      {activeQuizSession && (
         <QuizScreen
-          word={activeQuizWord}
-          onClose={() => setActiveQuizWord(null)}
+          quiz={activeQuizSession}
+          onClose={() => setActiveQuizSession(null)}
+          onTryAgain={() => handleTryAgainQuiz(activeQuizSession.wordId)}
         />
       )}
 
