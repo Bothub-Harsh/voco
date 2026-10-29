@@ -172,7 +172,22 @@ export async function generateVocabularyFromAI(word: string): Promise<WordQuizPa
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message = data?.error || `Request failed with status ${response.status}`;
+    if (response.status === 503) {
+      throw new Error(
+        'Groq AI key is not configured on the Render backend server. Please set GROQ_API_KEY in Render dashboard environment variables.'
+      );
+    }
+    if (response.status === 401) {
+      throw new Error(
+        'Invalid Groq API key configured on the backend server. Please check GROQ_API_KEY in Render dashboard.'
+      );
+    }
+    if (response.status === 429) {
+      throw new Error(
+        'Groq AI rate limit reached. Please wait a few moments and click Retry.'
+      );
+    }
+    const message = data?.error || `Request failed with HTTP ${response.status}`;
     const details = data?.details ? ` (${data.details})` : '';
     throw new Error(`${message}${details}`);
   }
@@ -231,7 +246,22 @@ export async function refreshVocabularyFromAI(
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message = data?.error || `Request failed with status ${response.status}`;
+    if (response.status === 503) {
+      throw new Error(
+        'Groq AI key is not configured on the Render backend server. Please set GROQ_API_KEY in Render dashboard environment variables.'
+      );
+    }
+    if (response.status === 401) {
+      throw new Error(
+        'Invalid Groq API key configured on the backend server. Please check GROQ_API_KEY in Render dashboard.'
+      );
+    }
+    if (response.status === 429) {
+      throw new Error(
+        'Groq AI rate limit reached. Please wait a few moments and click Retry.'
+      );
+    }
+    const message = data?.error || `Request failed with HTTP ${response.status}`;
     const details = data?.details ? ` (${data.details})` : '';
     throw new Error(`${message}${details}`);
   }
