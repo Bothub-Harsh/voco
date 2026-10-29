@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
       enabled: true,
     },
     LocalNotifications: {
-      smallIcon: 'ic_stat_icon_config_sample',
+      smallIcon: 'ic_stat_voco',
       iconColor: '#4F46E5',
     },
   },
