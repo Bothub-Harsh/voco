@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4f46e5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#grad)"/>
+  <path d="M140 120 H360 A20 20 0 0 1 380 140 V380 A20 20 0 0 1 360 400 H140 A20 20 0 0 1 120 380 V140 A20 20 0 0 1 140 120 Z" fill="#ffffff" opacity="0.15"/>
+  <path d="M160 160 C160 160 210 150 256 175 C302 150 352 160 352 160 V350 C352 350 302 340 256 365 C210 340 160 350 160 350 Z" fill="#ffffff"/>
+  <path d="M256 175 V365" stroke="#4f46e5" stroke-width="8" stroke-linecap="round"/>
+  <text x="256" y="295" font-family="system-ui, -apple-system, sans-serif" font-size="110" font-weight="900" fill="#4f46e5" text-anchor="middle">V</text>
+</svg>
+
