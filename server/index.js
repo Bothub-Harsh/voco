@@ -38,6 +38,15 @@ function cleanJsonContent(str) {
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint for cloud platforms like Render
+app.get(['/api/health', '/healthz'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'my-vocabulary-backend',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Status endpoint: tells frontend if API key is configured without exposing it
 app.get('/api/status', (req, res) => {
   const apiKey = process.env.GROQ_API_KEY?.trim();
@@ -218,7 +227,7 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`[Backend Proxy] Listening on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Backend Proxy] Listening on port ${PORT}`);
 });
 

@@ -1,0 +1,17 @@
+services:
+  # Web Service hosting the Node.js backend proxy (+ optional frontend)
+  - type: web
+    name: my-vocabulary-backend
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false # Set your Groq API key in Render dashboard
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: NODE_ENV
+        value: production

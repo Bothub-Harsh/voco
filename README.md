@@ -178,6 +178,57 @@ Then visit `http://localhost:3001`.
 
 ---
 
+## ☁️ Deploying Backend to Render (Free Cloud Hosting)
+
+You can host your secure Groq AI backend proxy on [Render](https://render.com) for free:
+
+### Method 1: Using the Included Blueprint (`render.yaml`)
+1. Push your latest code to GitHub (`git push origin main`).
+2. Log in to [Render](https://dashboard.render.com).
+3. Click **New +** > **Blueprint**.
+4. Connect your **`Bothub-Harsh/voco`** repository.
+5. Render will automatically detect [`render.yaml`](file:///d:/DEPLOYMENT%20APPLICATION/abc/my-vocabulary-web/render.yaml) and configure:
+   - **Service Type**: Web Service
+   - **Runtime**: Node
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/api/health`
+6. Under **Environment Variables**, set:
+   - `GROQ_API_KEY`: *(paste your real Groq key: `gsk_...`)*
+   - `GROQ_MODEL`: `openai/gpt-oss-120b`
+7. Click **Apply**. Render will deploy your service and give you a free URL (e.g. `https://my-vocabulary-backend.onrender.com`).
+
+---
+
+### Method 2: Manual Setup on Render Dashboard
+If you prefer setting it up manually:
+1. In Render dashboard, click **New +** > **Web Service**.
+2. Connect your GitHub repository: `Bothub-Harsh/voco`.
+3. Set the following fields:
+   - **Name**: `my-vocabulary-backend`
+   - **Language / Runtime**: `Node`
+   - **Branch**: `main`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Instance Type**: `Free`
+4. Expand **Advanced** > **Health Check Path**: enter `/api/health`.
+5. Under **Environment Variables**, add:
+   - `GROQ_API_KEY` = `your_groq_api_key_here`
+   - `GROQ_MODEL` = `openai/gpt-oss-120b`
+   - `NODE_ENV` = `production`
+6. Click **Create Web Service**.
+
+---
+
+### Connecting Frontend or Android APK to Render
+- **Monolithic Deployment (Built into Render)**: If you visit your Render URL directly in a browser (e.g. `https://my-vocabulary-backend.onrender.com`), both the frontend UI and the backend API work together automatically!
+- **Separate Frontend / Android APK**: When building a separate frontend or Android APK, point it to your live Render backend by adding to `.env`:
+  ```env
+  VITE_API_URL=https://my-vocabulary-backend.onrender.com
+  ```
+
+---
+
 ## 📱 Converting the Web App to an Android APK (Capacitor & Android Studio)
 
 Follow these steps when you are ready to create the Android APK:

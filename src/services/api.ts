@@ -1,11 +1,14 @@
 import type { BackendStatus, WordQuizPayload } from '../types';
 
+// Supports optional custom backend URL (e.g., Render URL) or defaults to relative path
+const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 /**
  * Checks backend health and Groq API key configuration status.
  */
 export async function checkBackendStatus(): Promise<BackendStatus> {
   try {
-    const res = await fetch('/api/status');
+    const res = await fetch(`${API_BASE}/api/status`);
     if (!res.ok) {
       return {
         configured: false,
@@ -18,7 +21,7 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
     return {
       configured: false,
       model: 'unknown',
-      message: 'Cannot reach backend proxy. Ensure "npm run server" is running.',
+      message: 'Cannot reach backend proxy. Ensure your server is running.',
     };
   }
 }
@@ -34,7 +37,7 @@ export async function generateVocabularyFromAI(word: string): Promise<WordQuizPa
 
   let response: Response;
   try {
-    response = await fetch('/api/vocabulary/generate', {
+    response = await fetch(`${API_BASE}/api/vocabulary/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
