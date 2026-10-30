@@ -178,3 +178,4 @@ public class VocoNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 }
+

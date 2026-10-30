@@ -184,3 +184,4 @@ public class VocoAlarmScheduler {
         Log.d(TAG, "Native notification delivered for word: " + upperWord);
     }
 }
+

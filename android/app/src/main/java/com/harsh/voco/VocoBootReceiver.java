@@ -30,3 +30,4 @@ public class VocoBootReceiver extends BroadcastReceiver {
         Log.d(TAG, "Restored active Voco reminders on reboot. Next reminder in " + intervalMins + " minutes.");
     }
 }
+
