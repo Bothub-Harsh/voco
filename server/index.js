@@ -89,22 +89,32 @@ async function handleVocabularyGeneration(req, res) {
     const isRefreshing = Boolean(isRefresh || currentMeaning);
 
     const prompt = isRefreshing
-      ? `You are an expert, beginner-friendly English vocabulary tutor.
+      ? `You are an expert, beginner-friendly English vocabulary tutor and professional quiz creator.
 Target English word: "${cleanWord}"
 Previous explanation: "${currentMeaning || ''}"
 Previous example sentence: "${currentExample || ''}"
 
-Goal: Provide a FRESH, ALTERNATIVE explanation and example sentence for "${cleanWord}" using different wording. Do NOT repeat or simply paraphrase the previous explanation.
+Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, and genuinely challenging multiple-choice quiz options for "${cleanWord}".
 
 Requirements:
 1. Provide the English word with proper capitalization.
-2. Provide an accurate, clear explanation in simple English written like a beginner's dictionary definition (easy to understand for an English learner, grammatically correct, concise).
+2. Provide an accurate, clear explanation in simple English written like a dictionary definition (easy to understand for an English learner, grammatically correct, concise).
 3. Provide one natural, fresh example sentence showing how the word is used in everyday English.
-4. Provide exactly four multiple-choice options (A, B, C, D) for what the word means.
-   - Exactly one option must be the correct meaning (matching the refreshed explanation).
-   - The other three options must be plausible but clearly incorrect alternate definitions.
-   - All four options must be distinct.
-5. Provide the correct answer index: 0 for 1st option, 1 for 2nd option, 2 for 3rd option, or 3 for 4th option.
+4. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
+   - Exactly one option must be the accurate, correct meaning.
+   - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
+   - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
+     * All four options MUST have very similar length (within 3-5 words of each other), sentence structure, complexity, and detail.
+     * The correct answer MUST NOT be noticeably longer, more elaborate, or more descriptive than the distractors.
+     * Avoid obviously unrelated, silly, or trivial definitions.
+     * Distractors must be sufficiently plausible that a learner must truly know "${cleanWord}" to choose correctly.
+     * Example of balanced options for the word "Racial":
+       - "Relating to physical strength and body structure."
+       - "Relating to groups defined by shared ancestry or ethnic background." (Correct)
+       - "Relating to cultural traditions and social behaviour."
+       - "Relating to personal beliefs and individual identity."
+   - All four options must be distinct and mutually exclusive.
+5. Provide the correct answer index: 0, 1, 2, or 3.
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
@@ -119,18 +129,28 @@ Respond ONLY with a valid JSON object matching this exact schema:
   ],
   "correctIndex": 1
 }`
-      : `You are an expert, beginner-friendly English vocabulary tutor.
+      : `You are an expert, beginner-friendly English vocabulary tutor and professional quiz creator.
 Target English word: "${cleanWord}"
 
 Requirements:
 1. Provide the English word with proper capitalization.
-2. Provide one accurate, easy-to-understand explanation in simple English, like a dictionary explanation written for a beginner (e.g. for "Discrimination": "Discrimination means treating someone unfairly or differently because of their identity, such as their caste, religion, gender, skin colour, or background."). Keep the explanation short, clear, and grammatically correct.
-3. Provide one natural example sentence showing how the word is used in everyday English (e.g. "Discrimination in the workplace is unfair and should not be allowed.").
-4. Provide exactly four multiple-choice options (A, B, C, D) for what the word means (for quiz practice).
-   - Exactly one option must be the correct meaning.
-   - The other three options must be plausible but clearly incorrect alternate definitions.
-   - All four options must be distinct.
-5. Provide the correct answer index: 0 for 1st option, 1 for 2nd option, 2 for 3rd option, or 3 for 4th option.
+2. Provide one accurate, easy-to-understand explanation in simple English, like a dictionary explanation written for a beginner. Keep the explanation clear, concise, and grammatically correct.
+3. Provide one natural example sentence showing how the word is used in everyday English.
+4. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
+   - Exactly one option must be the accurate, correct meaning.
+   - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
+   - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
+     * All four options MUST have very similar length (within 3-5 words of each other), sentence structure, complexity, and detail.
+     * The correct answer MUST NOT be noticeably longer, more elaborate, or more descriptive than the distractors.
+     * Avoid obviously unrelated, silly, or trivial definitions.
+     * Distractors must be sufficiently plausible that a learner must truly know "${cleanWord}" to choose correctly.
+     * Example of balanced options for the word "Racial":
+       - "Relating to physical strength and body structure."
+       - "Relating to groups defined by shared ancestry or ethnic background." (Correct)
+       - "Relating to cultural traditions and social behaviour."
+       - "Relating to personal beliefs and individual identity."
+   - All four options must be distinct and mutually exclusive.
+5. Provide the correct answer index: 0, 1, 2, or 3.
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
@@ -257,6 +277,110 @@ app.post('/api/vocabulary/generate', handleVocabularyGeneration);
 app.post('/api/vocabulary/refresh', (req, res) => {
   req.body.isRefresh = true;
   return handleVocabularyGeneration(req, res);
+});
+
+// Endpoint to generate intelligent, balanced quiz distractors for a word
+app.post('/api/quiz/generate-distractors', async (req, res) => {
+  try {
+    const { word, meaning } = req.body;
+    if (!word || !meaning || typeof word !== 'string' || typeof meaning !== 'string') {
+      return res.status(400).json({ error: 'Please provide both word and meaning.' });
+    }
+
+    const cleanWord = word.trim();
+    const cleanMeaning = meaning.trim();
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+
+    if (!apiKey || apiKey === 'your_groq_api_key_here') {
+      return res.status(503).json({ error: 'Groq API key is not configured.' });
+    }
+
+    const prompt = `You are an expert vocabulary quiz designer creating challenging, fair multiple-choice quizzes.
+Target Word: "${cleanWord}"
+Accurate Meaning: "${cleanMeaning}"
+
+Task:
+Generate 3 intelligent, believable distractors (incorrect meanings) for "${cleanWord}".
+
+Requirements:
+1. The 3 distractors must belong to the SAME general semantic category, theme, or topic as "${cleanWord}", but must NOT be meanings of "${cleanWord}".
+2. All 3 distractors MUST match the sentence structure, tone, level of detail, and length of the accurate meaning ("${cleanMeaning}").
+3. Do NOT make the correct answer longer or more descriptive than the distractors.
+4. Distractors must be sufficiently plausible that a student must actually understand the word.
+5. Provide exactly 4 options in total: the 1 accurate meaning and the 3 distractors, shuffled randomly.
+6. Provide correctIndex (integer 0 to 3) pointing to the accurate meaning.
+
+Respond ONLY with a valid JSON object:
+{
+  "options": [
+    "option 1",
+    "option 2",
+    "option 3",
+    "option 4"
+  ],
+  "correctIndex": 1
+}`;
+
+    for (const model of CANDIDATE_MODELS) {
+      try {
+        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content: 'Output ONLY valid JSON with options (array of 4 strings) and correctIndex (integer 0-3). No markdown or explanation.',
+              },
+              {
+                role: 'user',
+                content: prompt,
+              },
+            ],
+            temperature: 0.4,
+            response_format: { type: 'json_object' },
+          }),
+        });
+
+        if (!groqResponse.ok) continue;
+
+        const data = await groqResponse.json();
+        const rawContent = data.choices?.[0]?.message?.content;
+        if (!rawContent) continue;
+
+        const parsed = JSON.parse(cleanJsonContent(rawContent));
+        if (Array.isArray(parsed.options) && parsed.options.length === 4) {
+          const opts = parsed.options.map((o) => String(o).trim());
+          const idx = Number(parsed.correctIndex);
+
+          // Verify options are distinct
+          if (new Set(opts.map((o) => o.toLowerCase())).size === 4 && Number.isInteger(idx) && idx >= 0 && idx <= 3) {
+            // Guarantee final randomization
+            const correctText = opts[idx];
+            const shuffled = [...opts];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return res.json({
+              options: shuffled,
+              correctIndex: shuffled.indexOf(correctText),
+            });
+          }
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return res.status(502).json({ error: 'Could not generate AI distractors at this time.' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to process distractor request.' });
+  }
 });
 
 // Serve frontend build if dist folder exists

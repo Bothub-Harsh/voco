@@ -155,4 +155,65 @@ describe('Quiz Evaluation & Randomized Distractor Engine', () => {
     // Confirms correct answer is shuffled and not locked to 0
     expect(observedServerIndices.size).toBeGreaterThan(1);
   });
+
+  it('generates options with balanced length so correct answer does not stand out', () => {
+    const racialWord: VocabularyWord = {
+      id: 'word-racial',
+      word: 'Racial',
+      wordLower: 'racial',
+      meaning: 'Relating to groups defined by shared ancestry or ethnic background.',
+      example: 'The country worked to overcome racial prejudice.',
+      options: [
+        'Relating to physical strength and body structure.',
+        'Relating to groups defined by shared ancestry or ethnic background.',
+        'Relating to cultural traditions and social behaviour.',
+        'Relating to personal beliefs and individual identity.',
+      ],
+      correctIndex: 1,
+      dateAdded: Date.now(),
+    };
+
+    const session = generateFreshQuizSession(racialWord);
+    expect(session.options).toHaveLength(4);
+    expect(session.options[session.correctIndex]).toBe(racialWord.meaning);
+
+    const correctWordCount = racialWord.meaning.split(/\s+/).length;
+    for (const opt of session.options) {
+      const optWordCount = opt.split(/\s+/).length;
+      // All options must be balanced within a close word-count threshold
+      expect(Math.abs(optWordCount - correctWordCount)).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it('avoids repeating the previous correct answer position when previousIndex is passed', () => {
+    const word: VocabularyWord = {
+      id: 'word-repeat-test',
+      word: 'Resilient',
+      wordLower: 'resilient',
+      meaning: 'Able to recover quickly from difficult or challenging conditions.',
+      example: 'The community remained resilient after the flood.',
+      options: [
+        'Able to recover quickly from difficult or challenging conditions.',
+        'Easily broken and shattered under physical impact.',
+        'Showing reluctance to cooperate with others.',
+        'Having extreme caution when making decisions.',
+      ],
+      correctIndex: 0,
+      dateAdded: Date.now(),
+    };
+
+    let positionShiftedCount = 0;
+    const trials = 30;
+
+    for (let i = 0; i < trials; i++) {
+      const prev = 1; // Suppose previous attempt was slot B
+      const session = generateFreshQuizSession(word, [], prev);
+      if (session.correctIndex !== prev) {
+        positionShiftedCount++;
+      }
+    }
+
+    // In almost every trial, it should successfully shift away from previousIndex
+    expect(positionShiftedCount).toBeGreaterThanOrEqual(25);
+  });
 });

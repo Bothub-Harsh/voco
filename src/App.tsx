@@ -102,10 +102,12 @@ export function App() {
   const handleTryAgainQuiz = useCallback((wordId: string) => {
     const currentWord = wordsRef.current.find((w) => w.id === wordId);
     if (currentWord) {
-      const freshSession = generateFreshQuizSession(currentWord, wordsRef.current);
+      // Pass previous correctIndex to guarantee position shifts on consecutive attempts
+      const prevIdx = activeQuizSession?.correctIndex;
+      const freshSession = generateFreshQuizSession(currentWord, wordsRef.current, prevIdx);
       setActiveQuizSession(freshSession);
     }
-  }, []);
+  }, [activeQuizSession]);
 
   // Check URL params for ?quiz=<id> (from notifications)
   const checkUrlForQuiz = useCallback(async () => {

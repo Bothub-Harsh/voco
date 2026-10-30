@@ -268,3 +268,45 @@ export async function refreshVocabularyFromAI(
 
   return validateAiQuizResponse(data);
 }
+
+/**
+ * Calls backend Groq proxy to generate intelligent, balanced distractors for a quiz question.
+ * Returns null if backend is unreachable or unconfigured (caller falls back to smart local engine).
+ */
+export async function generateQuizDistractorsFromAI(
+  word: string,
+  meaning: string
+): Promise<{ options: [string, string, string, string]; correctIndex: number } | null> {
+  const base = getApiBaseUrl();
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(`${base}/api/quiz/generate-distractors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: word.trim(), meaning: meaning.trim() }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (
+      data &&
+      Array.isArray(data.options) &&
+      data.options.length === 4 &&
+      Number.isInteger(data.correctIndex) &&
+      data.correctIndex >= 0 &&
+      data.correctIndex <= 3
+    ) {
+      return {
+        options: data.options.map((o: unknown) => String(o).trim()) as [string, string, string, string],
+        correctIndex: data.correctIndex,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
