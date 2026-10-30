@@ -198,11 +198,11 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             optionLayouts[i].setOnClickListener(v -> handleOptionSelected(index));
         }
 
-        // LEFT BUTTON: Close - immediately finishes popup task and returns user to previous app
-        btnClose.setOnClickListener(v -> dismissQuiz());
-
-        // RIGHT BUTTON: Open Voco - explicitly launches main Voco React activity only when tapped
+        // LEFT BUTTON: Open Voco - explicitly launches main Voco React activity only when tapped
         btnOpenApp.setOnClickListener(v -> openMainVocoApp());
+
+        // RIGHT BUTTON: Close - immediately finishes popup task and returns user to previous app
+        btnClose.setOnClickListener(v -> dismissQuiz());
     }
 
     private void handleOptionSelected(int chosenIndex) {

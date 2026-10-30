@@ -15,7 +15,6 @@ import {
   generateVocabularyFromAI,
   refreshVocabularyFromAI,
   checkBackendStatus,
-  getApiBaseUrl,
 } from './services/api';
 import { generateFreshQuizSession } from './services/quizGenerator';
 import {
@@ -42,7 +41,6 @@ import {
   ensureNotificationChannel,
 } from './services/notifications';
 import { Header } from './components/Header';
-import { StorageStatusIndicator } from './components/StorageStatusIndicator';
 import { AddWordForm } from './components/AddWordForm';
 import { ReminderControls } from './components/ReminderControls';
 import { WordList } from './components/WordList';
@@ -53,12 +51,12 @@ import { initTheme, toggleTheme, type Theme } from './services/theme';
 import { CheckCircle2 } from 'lucide-react';
 
 export function App() {
-  // ─── Core UI state ───
+  // ─── UI State ───
   const [theme, setTheme] = useState<Theme>(() => initTheme());
   const [activeTab, setActiveTab] = useState<TabId>('add');
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<boolean>(false);
 
-  // ─── Data state ───
+  // ─── Vocabulary & Database State ───
   const [words, setWords] = useState<VocabularyWord[]>([]);
   const [activeQuizSession, setActiveQuizSession] = useState<ActiveQuizSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -66,26 +64,28 @@ export function App() {
   const [lastFailedWord, setLastFailedWord] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
-  const [remindersActive, setRemindersActiveState] = useState<boolean>(isRemindersActive());
-  const [reminderInterval, setReminderInterval] = useState<number>(getSavedReminderInterval());
-  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-    getNotificationPermission()
-  );
   const [isPersistent, setIsPersistent] = useState<boolean>(false);
   const [refreshingWordId, setRefreshingWordId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<{ wordId: string; message: string } | null>(null);
   const [highlightedWordId, setHighlightedWordId] = useState<string | null>(null);
   const [storageStatus, setStorageStatus] = useState<StorageStatus>({
     state: 'idle',
-    message: 'Initializing local database...',
+    message: 'Local database ready',
   });
+
+  // ─── Reminder & Notification State ───
+  const [remindersActive, setRemindersActiveState] = useState<boolean>(isRemindersActive());
+  const [reminderInterval, setReminderInterval] = useState<number>(getSavedReminderInterval());
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
+    getNotificationPermission()
+  );
 
   // Keep a ref to words so the reminder interval closure always has the latest words
   const wordsRef = useRef<VocabularyWord[]>(words);
   wordsRef.current = words;
 
-  // ─── Data loading ───
+  // ─── Data Loading ───
   const refreshWords = useCallback(async () => {
     try {
       const loaded = await getAllWords();
@@ -111,7 +111,6 @@ export function App() {
   const handleTryAgainQuiz = useCallback((wordId: string) => {
     const currentWord = wordsRef.current.find((w) => w.id === wordId);
     if (currentWord) {
-      // Pass previous correctIndex to guarantee position shifts on consecutive attempts
       const prevIdx = activeQuizSession?.correctIndex;
       const freshSession = generateFreshQuizSession(currentWord, wordsRef.current, prevIdx);
       setActiveQuizSession(freshSession);
@@ -138,12 +137,9 @@ export function App() {
       const persistentGranted = await requestPersistentStorage();
       setIsPersistent(persistentGranted);
 
-      // 2. Migrate any legacy data from localStorage without deleting it
+      // 2. Migrate legacy data if present
       try {
-        const migration = await migrateFromLocalStorageIfPresent();
-        if (migration.migratedCount > 0) {
-          console.log(`Migrated ${migration.migratedCount} words from localStorage.`);
-        }
+        await migrateFromLocalStorageIfPresent();
       } catch (err) {
         console.warn('LocalStorage migration note:', err);
       }
@@ -178,11 +174,11 @@ export function App() {
         }
       }
 
-      // 5. Load from IndexedDB
+      // 5. Load words from IndexedDB
       const loaded = await refreshWords();
       setStorageStatus({
         state: 'saved',
-        message: `${loaded.length} word${loaded.length === 1 ? '' : 's'} loaded from IndexedDB`,
+        message: `${loaded.length} word${loaded.length === 1 ? '' : 's'} stored locally`,
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
@@ -197,10 +193,10 @@ export function App() {
 
     initializeStorage();
 
-    // Check backend proxy status
+    // Check backend status
     checkBackendStatus().then(setBackendStatus);
 
-    // Check native notification permission on mount
+    // Check notification permission on mount
     checkNotificationPermissionAsync().then(setPermission);
 
     // Setup native notification click listener
@@ -232,13 +228,6 @@ export function App() {
     };
     window.addEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
 
-    // Register service worker if available
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
-        console.warn('Service worker registration failed:', err);
-      });
-    }
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -246,7 +235,7 @@ export function App() {
     };
   }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
 
-  // ─── Reminder countdown timer (runs regardless of active tab) ───
+  // ─── Reminder Timer (Runs continuously across all tabs) ───
   useEffect(() => {
     if (!remindersActive) {
       setSecondsRemaining(null);
@@ -272,16 +261,13 @@ export function App() {
       setSecondsRemaining(secs);
 
       if (diffMs <= 0) {
-        // Schedule next visual countdown target
         const newTarget = Date.now() + intervalMs;
         setNextReminderTimestamp(newTarget);
         setSecondsRemaining(reminderInterval * 60);
 
-        // On browser web: trigger browser notification via JS timer
-        // On native Android: Android native AlarmManager delivers reminders independently
         if (!isNativeApp()) {
-          const words = wordsRef.current;
-          const nextWord = pickNextReminderWord(words);
+          const currentWords = wordsRef.current;
+          const nextWord = pickNextReminderWord(currentWords);
           if (nextWord) {
             dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
           }
@@ -292,7 +278,14 @@ export function App() {
     return () => clearInterval(ticker);
   }, [remindersActive, reminderInterval, openQuizForWord]);
 
-  // ─── Handlers ───
+  // ─── Actions & Handlers ───
+
+  const triggerSuccessMessage = () => {
+    setSuccessMessage(true);
+    setTimeout(() => {
+      setSuccessMessage(false);
+    }, 3000);
+  };
 
   const handleChangeInterval = async (newMinutes: number) => {
     const clamped = Math.max(1, Math.floor(newMinutes));
@@ -300,73 +293,42 @@ export function App() {
     setSavedReminderInterval(clamped);
 
     if (remindersActive) {
-      // Reset countdown to the new interval immediately
       const newTarget = Date.now() + clamped * 60 * 1000;
       setNextReminderTimestamp(newTarget);
       setSecondsRemaining(clamped * 60);
 
-      // On native platform, re-schedule future alarms with the updated interval
       if (isNativeApp() && wordsRef.current.length > 0) {
         await scheduleNativeReminders(wordsRef.current, clamped);
       }
     }
   };
 
-  const showSuccess = (message: string) => {
-    setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(null), 3000);
-  };
-
-  // Add word action: Generates content, validates, then awaits IndexedDB write before updating list
   const handleAddWord = async (inputWord: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     setLastFailedWord(null);
 
-    setStorageStatus({
-      state: 'saving',
-      message: 'Generating definition with Groq AI...',
-    });
-
     try {
-      // 1. Generate via Groq proxy
       const generated = await generateVocabularyFromAI(inputWord);
-
-      setStorageStatus({
-        state: 'saving',
-        message: 'Writing record to local IndexedDB...',
-      });
-
-      // 2. Await IndexedDB write completion (checks duplicates and commits transaction)
       const saved = await saveWord(generated);
-
-      // 3. Update React state by re-reading directly from IndexedDB (source of truth)
       const updatedList = await refreshWords();
 
-      // Synchronize native Android word bank so background reminders rotate new word
       if (isNativeApp() && updatedList.length > 0) {
         syncWordsWithNativeScheduler(updatedList).catch(() => {});
       }
 
       setStorageStatus({
         state: 'saved',
-        message: `"${saved.word}" saved locally in IndexedDB`,
+        message: `"${saved.word}" saved locally`,
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // Highlight the newly added word for the user to view its meaning and example
       setHighlightedWordId(saved.id);
-
-      // Show success message
-      showSuccess(`"${saved.word}" saved successfully!`);
+      triggerSuccessMessage();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add word.';
       setErrorMessage(msg);
       setLastFailedWord(inputWord);
-      setStorageStatus({
-        state: 'error',
-        message: `Save failed: ${msg}`,
-      });
     } finally {
       setIsLoading(false);
     }
@@ -378,58 +340,38 @@ export function App() {
     }
   };
 
-  // Add manual word action: saves user-written meaning and example directly to IndexedDB
   const handleAddManualWord = async (inputWord: string, meaning: string, example?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     setLastFailedWord(null);
 
-    setStorageStatus({
-      state: 'saving',
-      message: `Writing "${inputWord}" to local IndexedDB...`,
-    });
-
     try {
       const saved = await saveManualWord({ word: inputWord, meaning, example });
       const updatedList = await refreshWords();
 
-      // Synchronize native Android word bank so background reminders rotate new word
       if (isNativeApp() && updatedList.length > 0) {
         syncWordsWithNativeScheduler(updatedList).catch(() => {});
       }
 
       setStorageStatus({
         state: 'saved',
-        message: `"${saved.word}" saved locally in IndexedDB`,
+        message: `"${saved.word}" saved locally`,
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // Highlight the newly added word for the user
       setHighlightedWordId(saved.id);
-
-      // Show success message
-      showSuccess(`"${saved.word}" saved successfully!`);
+      triggerSuccessMessage();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save manual word.';
+      const msg = err instanceof Error ? err.message : 'Failed to save word.';
       setErrorMessage(msg);
-      setStorageStatus({
-        state: 'error',
-        message: `Save failed: ${msg}`,
-      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Refresh word explanation action: generates fresh alternative wording and persists to IndexedDB
   const handleRefreshWord = async (wordToRefresh: VocabularyWord) => {
     setRefreshingWordId(wordToRefresh.id);
     setRefreshError(null);
-
-    setStorageStatus({
-      state: 'saving',
-      message: `Generating new explanation for "${wordToRefresh.word}"...`,
-    });
 
     try {
       const refreshed = await refreshVocabularyFromAI(
@@ -448,19 +390,9 @@ export function App() {
 
       await updateWord(updatedWord);
       await refreshWords();
-
-      setStorageStatus({
-        state: 'saved',
-        message: `New explanation for "${wordToRefresh.word}" saved in IndexedDB`,
-        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to refresh explanation.';
       setRefreshError({ wordId: wordToRefresh.id, message: msg });
-      setStorageStatus({
-        state: 'error',
-        message: `Refresh failed: ${msg}`,
-      });
     } finally {
       setRefreshingWordId(null);
     }
@@ -473,40 +405,26 @@ export function App() {
   };
 
   const handleUpdateWord = async (updated: VocabularyWord) => {
-    setStorageStatus({
-      state: 'saving',
-      message: `Updating "${updated.word}" in IndexedDB...`,
-    });
-
     try {
       await updateWord(updated);
       await refreshWords();
-      setStorageStatus({
-        state: 'saved',
-        message: `"${updated.word}" updated locally in IndexedDB`,
-        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Update failed';
-      setStorageStatus({
-        state: 'error',
-        message: `Update failed: ${msg}`,
-      });
-      throw err;
+      throw new Error(msg);
     }
   };
 
   const handleDeleteWord = async (id: string, wordSpelling: string) => {
-    setStorageStatus({
-      state: 'saving',
-      message: `Removing "${wordSpelling}" from IndexedDB...`,
-    });
-
     try {
       await deleteWord(id);
       const remainingWords = await refreshWords();
 
-      // If reminders active, refresh native words bank or cancel if no words left
+      setStorageStatus({
+        state: 'saved',
+        message: `"${wordSpelling}" deleted`,
+        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+
       if (isRemindersActive() && isNativeApp()) {
         if (remainingWords.length > 0) {
           syncWordsWithNativeScheduler(remainingWords).catch(() => {});
@@ -516,20 +434,12 @@ export function App() {
           setRemindersActiveState(false);
         }
       }
-      setStorageStatus({
-        state: 'saved',
-        message: `"${wordSpelling}" deleted from IndexedDB`,
-        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      });
+
       if (activeQuizSession?.wordId === id) {
         setActiveQuizSession(null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Delete failed';
-      setStorageStatus({
-        state: 'error',
-        message: `Delete failed: ${msg}`,
-      });
       alert(`Could not delete word: ${msg}`);
     }
   };
@@ -540,11 +450,6 @@ export function App() {
       message,
       lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     });
-  };
-
-  const handleCheckBackend = async () => {
-    const status = await checkBackendStatus();
-    setBackendStatus(status);
   };
 
   const handleStartReminders = async () => {
@@ -563,7 +468,7 @@ export function App() {
           const exactStatus = await checkExactAlarmPermission();
           if (exactStatus === 'prompt') {
             const wantsToEnable = confirm(
-              'For practice reminders to arrive at exact minute intervals in the background, Android requires the "Alarms & reminders" permission.\n\nWould you like to open Settings to allow it for Voco now?'
+              'For reminders to arrive at exact minute intervals in the background, Android requires the "Alarms & reminders" permission.\n\nOpen Settings to enable it?'
             );
             if (wantsToEnable) {
               await openExactAlarmSettings();
@@ -586,7 +491,7 @@ export function App() {
     } else {
       if (isNativeApp()) {
         alert(
-          'Notification permission was not granted. Please allow notifications for Voco in your Android Settings (Settings > Apps > Voco > Notifications).'
+          'Notification permission was not granted. Please allow notifications in Android Settings > Apps > Voco > Notifications.'
         );
       } else {
         alert('Notification permission was not granted. Please allow notifications in your browser.');
@@ -611,32 +516,35 @@ export function App() {
     setPermission(currentPerm);
 
     if (!granted) {
-      if (isNativeApp()) {
-        alert(
-          'Notification permission is disabled. Please allow notifications in Android Settings > Apps > Voco > Notifications to test reminders.'
-        );
-      } else {
-        alert('Please enable browser notifications to test reminders.');
-      }
+      alert('Please enable notifications to receive practice reminders.');
       return;
     }
 
     const nextWord = pickNextReminderWord(wordsRef.current);
     if (!nextWord) {
-      alert('Save at least one word first before sending reminders.');
+      alert('Save at least one word first before testing reminders.');
       return;
     }
 
     if (isNativeApp()) {
       const scheduled = await scheduleTestNotification(nextWord);
       if (!scheduled) {
-        alert('Could not deliver notification. Check your Android notification settings.');
+        alert('Could not deliver test notification. Check notification permissions.');
       }
     } else {
       const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
       if (!sent) {
-        alert('Could not deliver notification. Check your browser notification settings.');
+        alert('Could not deliver test notification. Check browser permissions.');
       }
+    }
+  };
+
+  const handleRequestPermission = async () => {
+    const granted = await requestNotificationPermission();
+    const current = await checkNotificationPermissionAsync();
+    setPermission(current);
+    if (!granted && isNativeApp()) {
+      await openExactAlarmSettings();
     }
   };
 
@@ -645,7 +553,6 @@ export function App() {
     setTheme(next);
   };
 
-  // ─── Render ───
   return (
     <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200">
       <Header
@@ -656,64 +563,15 @@ export function App() {
         onToggleTheme={handleToggleTheme}
       />
 
-      {/* Main content area — pb-20 ensures content isn't hidden behind bottom nav */}
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-4 sm:pt-5 pb-24">
-
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24">
         {/* ━━━ TAB 1: ADD WORDS ━━━ */}
         {activeTab === 'add' && (
-          <div className="animate-fade-in-up">
-            {/* Backend Connectivity / API Key Status Banner */}
-            {backendStatus && !backendStatus.reachable && (
-              <div className="mb-4 p-4 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-card flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-bold text-amber-950 dark:text-amber-100 text-sm">
-                    Connecting to Vocabulary Server...
-                  </p>
-                  <p className="text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                    The cloud AI backend ({getApiBaseUrl()}) is currently unreachable or spinning up (on free tier hosting, waking up takes ~20-30 seconds). You can still practice saved words and write your own meanings offline!
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCheckBackend}
-                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors shadow-xs"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {backendStatus && backendStatus.reachable && !backendStatus.configured && (
-              <div className="mb-4 p-4 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-2xl text-rose-900 dark:text-rose-200 text-xs shadow-card">
-                <p className="font-bold text-rose-950 dark:text-rose-100 text-sm">
-                  Backend Configuration Notice
-                </p>
-                <p className="text-rose-800 dark:text-rose-300 mt-1 leading-relaxed">
-                  The vocabulary server at <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
-                </p>
-              </div>
-            )}
-
-            {/* Storage Status */}
-            <StorageStatusIndicator
-              status={storageStatus}
-              isPersistent={isPersistent}
-            />
-
-            {/* Success message */}
+          <div className="space-y-3">
+            {/* Small Clean Success Message */}
             {successMessage && (
-              <div className="mb-4 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 rounded-2xl text-emerald-800 dark:text-emerald-200 text-sm flex items-center space-x-2.5 shadow-card animate-fade-in-up">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="font-semibold text-emerald-900 dark:text-emerald-100">
-                    Word saved successfully!
-                  </p>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                    {successMessage}
-                  </p>
-                </div>
+              <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center space-x-2 shadow-xs transition-opacity">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Word saved successfully!</span>
               </div>
             )}
 
@@ -727,17 +585,17 @@ export function App() {
               lastFailedWord={lastFailedWord}
             />
 
-            {/* Practice Reminders */}
+            {/* Practice Reminders (Kept Simple) */}
             <ReminderControls
               remindersActive={remindersActive}
               onStartReminders={handleStartReminders}
               onStopReminders={handleStopReminders}
               onTestNotification={handleTestNotification}
               words={words}
-              permission={permission}
               intervalMinutes={reminderInterval}
               onChangeInterval={handleChangeInterval}
               secondsRemaining={secondsRemaining}
+              onOpenSettings={() => setActiveTab('settings')}
             />
           </div>
         )}
@@ -766,15 +624,21 @@ export function App() {
             onRefreshWords={refreshWords}
             onStatusChange={handleBackupStatusChange}
             permission={permission}
+            onRequestPermission={handleRequestPermission}
             isPersistent={isPersistent}
             isOnline={isOnline}
             backendStatus={backendStatus}
             storageStatus={storageStatus}
+            reminderInterval={reminderInterval}
+            onChangeInterval={handleChangeInterval}
+            remindersActive={remindersActive}
+            onStartReminders={handleStartReminders}
+            onStopReminders={handleStopReminders}
           />
         )}
       </main>
 
-      {/* Quiz Modal — always rendered on top regardless of active tab */}
+      {/* Quiz Modal Overlay */}
       {activeQuizSession && (
         <QuizScreen
           quiz={activeQuizSession}

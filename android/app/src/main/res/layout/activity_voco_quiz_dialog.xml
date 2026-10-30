@@ -296,40 +296,40 @@
                         android:textStyle="italic" />
                 </LinearLayout>
 
-                <!-- Action Buttons: Close & Open Voco -->
+                <!-- Action Buttons: Open Voco (left) & Close (right) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
                     android:orientation="horizontal">
 
-                    <!-- LEFT BUTTON: Close (Primary filled indigo, white text, clear emphasis) -->
-                    <Button
-                        android:id="@+id/btn_close"
-                        style="?android:attr/borderlessButtonStyle"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_btn_primary"
-                        android:text="Close"
-                        android:textAllCaps="false"
-                        android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <!-- RIGHT BUTTON: Open Voco (Secondary white background, subtle border, dark text) -->
+                    <!-- LEFT BUTTON: Open Voco (White background, subtle border, dark text) -->
                     <Button
                         android:id="@+id/btn_open_app"
                         style="?android:attr/borderlessButtonStyle"
                         android:layout_width="0dp"
                         android:layout_height="44dp"
-                        android:layout_marginStart="6dp"
+                        android:layout_marginEnd="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_secondary"
                         android:text="Open Voco"
                         android:textAllCaps="false"
                         android:textColor="#334155"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <!-- RIGHT BUTTON: Close (Filled indigo/purple background, white text) -->
+                    <Button
+                        android:id="@+id/btn_close"
+                        style="?android:attr/borderlessButtonStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_primary"
+                        android:text="Close"
+                        android:textAllCaps="false"
+                        android:textColor="#FFFFFF"
                         android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>

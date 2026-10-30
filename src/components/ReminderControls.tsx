@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
-import { Bell, BellOff, Send, Clock, Info, SlidersHorizontal, Settings, BatteryCharging } from 'lucide-react';
+import { Bell, BellOff, Send, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import type { VocabularyWord } from '../types';
-import {
-  formatCountdownSeconds,
-  isNativeApp,
-  openExactAlarmSettings,
-  openBatterySettings,
-} from '../services/notifications';
+import { formatCountdownSeconds } from '../services/notifications';
 
 interface ReminderControlsProps {
   remindersActive: boolean;
@@ -14,13 +9,13 @@ interface ReminderControlsProps {
   onStopReminders: () => void;
   onTestNotification: () => Promise<void>;
   words: VocabularyWord[];
-  permission: NotificationPermission | 'unsupported';
   intervalMinutes: number;
   onChangeInterval: (minutes: number) => void;
   secondsRemaining: number | null;
+  onOpenSettings?: () => void;
 }
 
-const PRESET_INTERVALS = [1, 2, 5, 10, 15, 30];
+const PRESET_INTERVALS = [1, 2, 3, 5, 10, 15, 30];
 
 export const ReminderControls: React.FC<ReminderControlsProps> = ({
   remindersActive,
@@ -28,13 +23,13 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
   onStopReminders,
   onTestNotification,
   words,
-  permission,
   intervalMinutes,
   onChangeInterval,
   secondsRemaining,
+  onOpenSettings,
 }) => {
   const hasWords = words.length > 0;
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [customInput, setCustomInput] = useState(String(intervalMinutes));
 
   const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,54 +47,48 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-4 sm:p-6 mb-4 sm:mb-5 transition-colors">
-      {/* Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
-              Practice Reminders
-            </h2>
+    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-4 sm:p-5 transition-colors">
+      {/* Top Row: Heading + Status badge + Action buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Left: Heading & Status */}
+        <div className="flex items-center flex-wrap gap-2">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+            Practice Reminders
+          </h2>
 
-            {/* Active / Stopped badge */}
-            <span
-              className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1.5 ${
-                remindersActive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60'
-                  : 'bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200/80 dark:border-zinc-800'
-              }`}
-            >
-              {remindersActive ? (
-                <>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Active ({intervalMinutes} min)</span>
-                  {secondsRemaining !== null && (
-                    <span className="font-mono bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-1.5 py-px rounded text-[10px] font-bold">
-                      ⏱ {formatCountdownSeconds(secondsRemaining)}
-                    </span>
-                  )}
-                </>
-              ) : (
-                'Stopped'
-              )}
-            </span>
-          </div>
-
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1 flex items-center">
-            <Clock className="w-3 h-3 mr-1 text-slate-400 dark:text-zinc-500 shrink-0" />
-            Quiz prompt every {intervalMinutes} {intervalMinutes === 1 ? 'minute' : 'minutes'} from saved words.
-          </p>
+          {/* Active or Stopped status + interval */}
+          <span
+            className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1.5 ${
+              remindersActive
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60'
+                : 'bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border border-slate-200/80 dark:border-zinc-800'
+            }`}
+          >
+            {remindersActive ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Active ({intervalMinutes}m)</span>
+                {secondsRemaining !== null && (
+                  <span className="font-mono text-[10px] font-bold">
+                    ⏱ {formatCountdownSeconds(secondsRemaining)}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span>Stopped • {intervalMinutes}m</span>
+            )}
+          </span>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2">
           {remindersActive ? (
             <button
               type="button"
               onClick={onStopReminders}
-              className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
+              className="inline-flex items-center px-3 py-1.5 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
             >
-              <BellOff className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-zinc-400" />
+              <BellOff className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-zinc-400" />
               <span>Stop</span>
             </button>
           ) : (
@@ -107,10 +96,10 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
               type="button"
               onClick={onStartReminders}
               disabled={!hasWords}
-              className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-sm"
-              title={!hasWords ? 'Save at least one word first' : `Start ${intervalMinutes}-minute reminders`}
+              className="inline-flex items-center px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-xs"
+              title={!hasWords ? 'Save at least one word first' : `Start ${intervalMinutes}-min reminders`}
             >
-              <Bell className="w-3.5 h-3.5 mr-1.5" />
+              <Bell className="w-3.5 h-3.5 mr-1" />
               <span>Start</span>
             </button>
           )}
@@ -119,146 +108,82 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
             type="button"
             onClick={onTestNotification}
             disabled={!hasWords}
-            className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 active:bg-slate-100 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
-            title={isNativeApp() ? 'Test Android notification' : 'Test practice reminder'}
+            className="inline-flex items-center px-3 py-1.5 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
+            title="Test reminder notification"
           >
-            <Send className="w-3.5 h-3.5 mr-1.5 text-indigo-500 dark:text-indigo-400" />
+            <Send className="w-3.5 h-3.5 mr-1 text-indigo-500 dark:text-indigo-400" />
             <span>Test</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setShowTimePicker(!showTimePicker)}
-            className={`p-2 border rounded-xl transition-all ${
-              showTimePicker
+            onClick={() => setShowIntervalPicker(!showIntervalPicker)}
+            className={`p-1.5 border rounded-xl transition-all ${
+              showIntervalPicker
                 ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400'
-                : 'border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-500 dark:text-zinc-400'
+                : 'border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-500 dark:text-zinc-400'
             }`}
-            title="Change reminder interval"
-            aria-label="Change reminder interval"
+            title="Adjust reminder interval"
+            aria-label="Adjust reminder interval"
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Live Countdown Banner */}
-      {remindersActive && secondsRemaining !== null && (
-        <div className="mt-4 p-3 bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 rounded-xl flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
-          <div className="flex items-center space-x-2">
-            <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-            <span>
-              Next reminder in{' '}
-              <strong className="font-mono text-sm font-bold text-emerald-900 dark:text-emerald-100 ml-0.5">
-                {formatCountdownSeconds(secondsRemaining)}
-              </strong>
+      {/* Compact Expandable Interval Picker */}
+      {showIntervalPicker && (
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-zinc-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-600 dark:text-zinc-300">
+              Reminder Interval
             </span>
-          </div>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-            Rotating from saved words
-          </span>
-        </div>
-      )}
 
-      {/* Interval selector */}
-      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-zinc-800/80">
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-slate-600 dark:text-zinc-300">
-            <span>Reminder Interval</span>
-            <span className="text-slate-400 dark:text-zinc-500 font-normal text-[10px]">Min: 1 min</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {PRESET_INTERVALS.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => handlePresetSelect(preset)}
-                className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${
-                  intervalMinutes === preset
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100/80 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-zinc-800'
-                }`}
-              >
-                {preset}m
-              </button>
-            ))}
-
-            <div className="flex items-center space-x-1 pl-1">
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                value={customInput}
-                onChange={handleCustomChange}
-                className="w-14 px-2 py-1 text-xs text-center border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-50/50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 font-medium transition-all"
-                title="Custom reminder minutes (minimum 1)"
-              />
-              <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">min</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Permission warning */}
-      {permission === 'denied' && (
-        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-2">
-          <div className="flex items-start space-x-2">
-            <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <span>
-              {isNativeApp()
-                ? 'Notifications are disabled for Voco. Please allow notifications in Android Settings to receive practice reminders.'
-                : 'Notifications are blocked in your browser. Click the padlock icon in the address bar to allow notifications.'}
-            </span>
-          </div>
-          {isNativeApp() && (
-            <button
-              type="button"
-              onClick={() => openExactAlarmSettings()}
-              className="self-start inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-semibold transition-all shadow-xs"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Open Android Settings</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Platform info & battery guidance note */}
-      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-zinc-800/80 flex items-start space-x-2 text-[10px] text-slate-400 dark:text-zinc-500 leading-relaxed">
-        <Info className="w-3 h-3 text-slate-300 dark:text-zinc-600 shrink-0 mt-0.5" />
-        <div className="w-full">
-          {isNativeApp() ? (
-            <div>
-              <p>
-                <strong className="text-slate-500 dark:text-zinc-400">Native Android Scheduling:</strong> Reminders use Android's native AlarmManager to deliver notifications independently of the app. For uninterrupted background delivery after removing Voco from Recent Apps, ensure <span className="text-slate-600 dark:text-zinc-300 font-medium">Battery usage</span> is set to <span className="text-slate-600 dark:text-zinc-300 font-medium">Unrestricted</span>.
-              </p>
-              <div className="mt-2.5 flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PRESET_INTERVALS.map((preset) => (
                 <button
+                  key={preset}
                   type="button"
-                  onClick={() => openBatterySettings()}
-                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200 rounded-lg text-[10px] font-semibold transition-all border border-slate-200/80 dark:border-zinc-800"
+                  onClick={() => handlePresetSelect(preset)}
+                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all ${
+                    intervalMinutes === preset
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-zinc-800'
+                  }`}
                 >
-                  <BatteryCharging className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>Battery Usage (Set to Unrestricted)</span>
+                  {preset}m
                 </button>
-                <button
-                  type="button"
-                  onClick={() => openExactAlarmSettings()}
-                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200 rounded-lg text-[10px] font-semibold transition-all border border-slate-200/80 dark:border-zinc-800"
-                >
-                  <Settings className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                  <span>Alarms & Reminders Settings</span>
-                </button>
+              ))}
+
+              <div className="flex items-center space-x-1 pl-1">
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  value={customInput}
+                  onChange={handleCustomChange}
+                  className="w-12 px-1.5 py-0.5 text-xs text-center border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-50/50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  title="Custom minutes"
+                />
+                <span className="text-[10px] text-slate-400 dark:text-zinc-500">min</span>
               </div>
             </div>
-          ) : (
-            <p>
-              <strong className="text-slate-500 dark:text-zinc-400">Browser note:</strong> Web browsers throttle background timers when tabs are inactive. The installed Android APK uses native Android alarms.
-            </p>
+          </div>
+
+          {onOpenSettings && (
+            <div className="mt-2.5 pt-2 border-t border-slate-50 dark:border-zinc-800/40 flex justify-end">
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-semibold inline-flex items-center"
+              >
+                <span>Battery & alarm settings</span>
+                <ChevronRight className="w-3 h-3 ml-0.5" />
+              </button>
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 };
