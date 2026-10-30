@@ -115,7 +115,7 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
             onClick={onTestNotification}
             disabled={!hasWords}
             className="inline-flex items-center px-3.5 py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-semibold rounded-xl transition-all"
-            title={isNativeApp() ? 'Test Android notification' : 'Test browser notification'}
+            title={isNativeApp() ? 'Test Android notification' : 'Test practice reminder'}
           >
             <Send className="w-3 h-3 mr-1.5 text-indigo-500" />
             <span>Test</span>
@@ -225,7 +225,7 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
         <div>
           {isNativeApp() ? (
             <p>
-              <strong className="text-slate-500">Native Android Scheduling:</strong> Reminders use Android's native AlarmManager to deliver notifications independently of the app or browser. For uninterrupted delivery after closing the app, ensure <span className="text-slate-600 font-medium">Battery usage</span> is set to <span className="text-slate-600 font-medium">Unrestricted</span> in your device's App info settings.
+              <strong className="text-slate-500">Native Android Scheduling:</strong> Reminders use Android's native AlarmManager to deliver notifications independently of the app. For uninterrupted delivery after closing the app, ensure <span className="text-slate-600 font-medium">Battery usage</span> is set to <span className="text-slate-600 font-medium">Unrestricted</span> in your device's App info settings.
             </p>
           ) : (
             <p>

@@ -36,6 +36,7 @@ import {
   cancelAllNativeReminders,
   scheduleTestNotification,
   getPendingNativeReminderCount,
+  ensureNotificationChannel,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { StorageStatusIndicator } from './components/StorageStatusIndicator';
@@ -135,7 +136,12 @@ export function App() {
       // 3. Seed starter word if empty
       await seedInitialWordIfEmpty();
 
-      // 4. Load from IndexedDB
+      // 4. Initialize native notification channel if running as Android APK
+      if (isNativeApp()) {
+        await ensureNotificationChannel();
+      }
+
+      // 5. Load from IndexedDB
       const loaded = await refreshWords();
       setStorageStatus({
         state: 'saved',
@@ -147,7 +153,7 @@ export function App() {
       if (isRemindersActive() && isNativeApp() && loaded.length > 0) {
         try {
           const pendingCount = await getPendingNativeReminderCount();
-          if (pendingCount < 5) {
+          if (pendingCount < 10) {
             await scheduleNativeReminders(loaded, getSavedReminderInterval());
           }
         } catch (e) {
@@ -155,7 +161,7 @@ export function App() {
         }
       }
 
-      // 5. Check if quiz was requested via URL query param
+      // 6. Check if quiz was requested via URL query param
       checkUrlForQuiz();
     };
 

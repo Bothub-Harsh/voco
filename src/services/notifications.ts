@@ -23,7 +23,8 @@ const NOTIF_ID_RANGE = 100000;
 const TEST_NOTIF_ID = 99999;
 
 // Maximum future slots to pre-schedule with Android AlarmManager
-const MAX_SCHEDULED_NOTIFICATIONS = 20;
+// 50 slots at 5 min = 250 minutes (over 4 hours of continuous reminders without opening app)
+const MAX_SCHEDULED_NOTIFICATIONS = 50;
 
 let nativeListenersInitialized = false;
 let channelInitialized = false;
@@ -58,6 +59,7 @@ function removeStorageItem(key: string): void {
  * Returns true when running as a native Android or iOS Capacitor app.
  */
 export function isNativeApp(): boolean {
+  if (typeof window === 'undefined') return false;
   return Capacitor.isNativePlatform();
 }
 
@@ -67,8 +69,8 @@ export function isNativeApp(): boolean {
 
 /**
  * Ensures the high-priority "voco_reminders" notification channel exists on Android.
- * Sets IMPORTANCE_HIGH (5) and lockscreen VISIBILITY_PUBLIC (1) with vibration enabled
- * so reminders show heads-up banners and wake the screen even when the app is in background.
+ * Sets IMPORTANCE_HIGH (4) and lockscreen VISIBILITY_PUBLIC (1) with vibration enabled
+ * so reminders show heads-up banners, sound, and show on the lock screen even when app is killed.
  */
 export async function ensureNotificationChannel(): Promise<void> {
   if (!Capacitor.isNativePlatform() || channelInitialized) return;
@@ -78,8 +80,8 @@ export async function ensureNotificationChannel(): Promise<void> {
       id: REMINDER_CHANNEL_ID,
       name: 'Voco Practice Reminders',
       description: 'Scheduled reminders to practice your saved vocabulary words',
-      importance: 5, // Android IMPORTANCE_HIGH (banner + sound + vibration)
-      visibility: 1, // VISIBILITY_PUBLIC (shows on lockscreen)
+      importance: 4, // Android NotificationManager.IMPORTANCE_HIGH (heads-up banner + sound + vibration)
+      visibility: 1, // NotificationCompat.VISIBILITY_PUBLIC (full content on lock screen)
       vibration: true,
       lights: true,
       lightColor: '#4F46E5',
@@ -282,12 +284,13 @@ function loadScheduledIds(): number[] {
 // ─────────────────────────────────────────────
 
 /**
- * Pre-schedules up to `count` future reminder alarms with Android's native AlarmManager.
- * Uses:
- * 1. Dedicated high-importance channel ("voco_reminders").
- * 2. Proper monochrome status bar vector icon ("ic_stat_voco").
+ * Pre-schedules up to `count` future reminder alarms directly with Android's native AlarmManager.
+ * Features:
+ * 1. Dedicated high-importance channel ("voco_reminders") for heads-up display and lock-screen visibility.
+ * 2. Proper monochrome vector icon ("ic_stat_voco") for clean status bar rendering.
  * 3. allowWhileIdle: true to fire during Doze mode and screen-off.
- * 4. isExactMandatory: false to guarantee alarms schedule smoothly even if exact-alarm permission is pending.
+ * 4. foreground: true to raise priority to PRIORITY_HIGH for heads-up pop-down banner.
+ * 5. Bakes distinct vocabulary words into each slot round-robin so each notification is unique.
  */
 export async function scheduleNativeReminders(
   words: VocabularyWord[],
@@ -298,10 +301,10 @@ export async function scheduleNativeReminders(
   if (!words || words.length === 0) return false;
 
   try {
-    // Ensure high-priority channel exists
+    // Ensure high-priority channel exists before scheduling
     await ensureNotificationChannel();
 
-    // Clean up previous schedules first
+    // Clean up any previously scheduled alarms first to prevent duplicates
     await cancelAllNativeReminders();
 
     // Check if exact alarms are allowed
@@ -340,12 +343,11 @@ export async function scheduleNativeReminders(
         channelId: REMINDER_CHANNEL_ID,
         smallIcon: 'ic_stat_voco',
         iconColor: '#4F46E5',
+        foreground: true, // Elevates to PRIORITY_HIGH on Android for heads-up display
         schedule: {
           at: fireAt,
           allowWhileIdle: true,
         },
-        // If exact alarm is granted, use it. If not, use inexact allowWhileIdle
-        // to avoid triggering an unexpected blocking intent to system settings.
         isExactNotification: canExact,
         isExactMandatory: false,
       });
@@ -361,11 +363,11 @@ export async function scheduleNativeReminders(
       setStorageItem(LAST_WORD_KEY, notifications[0].extra.wordId);
     }
 
-    // Register with native AlarmManager
+    // Register all alarms with Android AlarmManager in one native batch call
     await LocalNotifications.schedule({ notifications });
     saveScheduledIds(ids);
 
-    console.log(`[Voco] Successfully scheduled ${notifications.length} native background reminders.`);
+    console.log(`[Voco] Scheduled ${notifications.length} native background reminders (${intervalMinutes}m interval).`);
     return true;
   } catch (err) {
     console.error('[Voco] Failed to schedule native reminders:', err);
@@ -375,11 +377,13 @@ export async function scheduleNativeReminders(
 
 /**
  * Cancels all scheduled reminder notifications in Android AlarmManager and storage.
+ * Completely clears all pending alarms so reminders do not restart after reboot or reopening.
  */
 export async function cancelAllNativeReminders(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
   try {
+    // 1. Cancel by stored ID list
     const storedIds = loadScheduledIds();
     if (storedIds.length > 0) {
       await LocalNotifications.cancel({
@@ -387,15 +391,9 @@ export async function cancelAllNativeReminders(): Promise<void> {
       }).catch(() => {});
     }
 
-    // Also cancel all pending reminders in the Voco ID range
-    const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
-    const vocoPending = pending.notifications.filter(
-      (n) => n.id >= NOTIF_ID_BASE && n.id < NOTIF_ID_BASE + NOTIF_ID_RANGE
-    );
-    if (vocoPending.length > 0) {
-      await LocalNotifications.cancel({
-        notifications: vocoPending.map((n) => ({ id: n.id })),
-      }).catch(() => {});
+    // 2. Also call native cancelAll() to purge any orphaned alarms in AlarmManager
+    if (typeof (LocalNotifications as any).cancelAll === 'function') {
+      await (LocalNotifications as any).cancelAll().catch(() => {});
     }
 
     saveScheduledIds([]);
@@ -421,8 +419,8 @@ export async function getPendingNativeReminderCount(): Promise<number> {
 }
 
 /**
- * Dispatches an immediate test notification using native AlarmManager (fires in 2.5 seconds).
- * Bypasses exact-alarm requirements so it never fails even on fresh installs.
+ * Dispatches an immediate test notification using native AlarmManager (fires in ~1.5s).
+ * Displays full notification with sound, vibration, and heads-up banner.
  */
 export async function scheduleTestNotification(word: VocabularyWord): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
@@ -431,6 +429,15 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
 
     // Cancel any previous test notification
     await LocalNotifications.cancel({ notifications: [{ id: TEST_NOTIF_ID }] }).catch(() => {});
+
+    // Check exact alarm support
+    let canExact = true;
+    try {
+      const exactStatus = await checkExactAlarmPermission();
+      canExact = exactStatus === 'granted' || exactStatus === 'unsupported';
+    } catch {
+      canExact = false;
+    }
 
     await LocalNotifications.schedule({
       notifications: [
@@ -442,11 +449,12 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
           channelId: REMINDER_CHANNEL_ID,
           smallIcon: 'ic_stat_voco',
           iconColor: '#4F46E5',
+          foreground: true,
           schedule: {
-            at: new Date(Date.now() + 2500),
+            at: new Date(Date.now() + 1500),
             allowWhileIdle: true,
           },
-          isExactNotification: false,
+          isExactNotification: canExact,
           isExactMandatory: false,
         },
       ],
@@ -459,7 +467,7 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
 }
 
 // ─────────────────────────────────────────────
-// Web browser notification (fallback)
+// Web browser notification (fallback for web only)
 // ─────────────────────────────────────────────
 
 export async function dispatchWordNotification(
@@ -487,6 +495,7 @@ export async function dispatchWordNotification(
             channelId: REMINDER_CHANNEL_ID,
             smallIcon: 'ic_stat_voco',
             iconColor: '#4F46E5',
+            foreground: true,
             schedule: { at: new Date(Date.now() + 250), allowWhileIdle: true },
             isExactNotification: false,
             isExactMandatory: false,
