@@ -107,12 +107,55 @@ public class VocoNotificationPlugin extends Plugin {
     public void sendTestNotification(PluginCall call) {
         String wordId = call.getString("wordId", "");
         String wordText = call.getString("word", "Vocabulary");
+        String meaning = call.getString("meaning", "A set of familiar words within a person's language.");
+        String example = call.getString("example", "Reading regularly expands your active vocabulary.");
+        String optionsJson = call.getString("options", "[]");
+        Integer correctIndexObj = call.getInt("correctIndex");
+        int correctIndex = (correctIndexObj != null) ? correctIndexObj : 0;
+
+        java.util.List<String> optionsList = new java.util.ArrayList<>();
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(optionsJson);
+            for (int i = 0; i < arr.length(); i++) {
+                optionsList.add(arr.getString(i));
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (optionsList.size() < 4) {
+            optionsList.clear();
+            optionsList.add(meaning);
+            optionsList.add("Relating to physical strength and bodily endurance.");
+            optionsList.add("Relating to cultural traditions and collective social behaviour.");
+            optionsList.add("Relating to personal beliefs and individual identity.");
+            correctIndex = 0;
+        }
 
         Context ctx = getContext();
-        VocoAlarmScheduler.showNotification(ctx, wordId, wordText);
+        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, optionsList, correctIndex);
 
         JSObject ret = new JSObject();
         ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getQuizStats(PluginCall call) {
+        Context ctx = getContext();
+        SharedPreferences prefs = ctx.getSharedPreferences(VocoQuizDialogActivity.PREFS_QUIZ_STATS, Context.MODE_PRIVATE);
+
+        int total = prefs.getInt(VocoQuizDialogActivity.KEY_TOTAL_ANSWERED, 0);
+        int correct = prefs.getInt(VocoQuizDialogActivity.KEY_CORRECT_ANSWERED, 0);
+        String lastWord = prefs.getString(VocoQuizDialogActivity.KEY_LAST_RESULT_WORD, "");
+        boolean lastCorrect = prefs.getBoolean(VocoQuizDialogActivity.KEY_LAST_RESULT_CORRECT, false);
+        long lastTime = prefs.getLong(VocoQuizDialogActivity.KEY_LAST_RESULT_TIME, 0);
+
+        JSObject ret = new JSObject();
+        ret.put("totalAnswered", total);
+        ret.put("correctAnswered", correct);
+        ret.put("lastWord", lastWord);
+        ret.put("lastCorrect", lastCorrect);
+        ret.put("lastTime", lastTime);
         call.resolve(ret);
     }
 

@@ -14,13 +14,27 @@ interface VocoSchedulerPlugin {
   }>;
   stopReminders(): Promise<{ success: boolean }>;
   updateWords(options: { words: string }): Promise<{ success: boolean }>;
-  sendTestNotification(options: { wordId: string; word: string }): Promise<{ success: boolean }>;
+  sendTestNotification(options: {
+    wordId: string;
+    word: string;
+    meaning?: string;
+    example?: string;
+    options?: string;
+    correctIndex?: number;
+  }): Promise<{ success: boolean }>;
   getReminderStatus(): Promise<{
     active: boolean;
     intervalMinutes: number;
     nextTrigger: number;
     generation?: number;
     exactAlarmGranted: boolean;
+  }>;
+  getQuizStats(): Promise<{
+    totalAnswered: number;
+    correctAnswered: number;
+    lastWord: string;
+    lastCorrect: boolean;
+    lastTime: number;
   }>;
   checkExactAlarmPermission(): Promise<{ exact_alarm_granted: boolean }>;
   openExactAlarmSettings(): Promise<{ opened: boolean }>;
@@ -304,6 +318,9 @@ export async function scheduleNativeReminders(
         id: w.id,
         word: w.word,
         meaning: w.meaning,
+        example: w.example || '',
+        options: w.options || [],
+        correctIndex: typeof w.correctIndex === 'number' ? w.correctIndex : 0,
       }))
     );
 
@@ -338,6 +355,9 @@ export async function syncWordsWithNativeScheduler(words: VocabularyWord[]): Pro
         id: w.id,
         word: w.word,
         meaning: w.meaning,
+        example: w.example || '',
+        options: w.options || [],
+        correctIndex: typeof w.correctIndex === 'number' ? w.correctIndex : 0,
       }))
     );
     await VocoScheduler.updateWords({ words: wordsData });
@@ -380,7 +400,8 @@ export async function getNativeReminderStatus(): Promise<{
 }
 
 /**
- * Immediately delivers one test notification through Android native NotificationManager.
+ * Immediately delivers one test notification through Android native NotificationManager
+ * configured to launch the fast native quiz popup when tapped.
  */
 export async function scheduleTestNotification(word: VocabularyWord): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
@@ -389,11 +410,33 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
     await VocoScheduler.sendTestNotification({
       wordId: word.id,
       word: word.word,
+      meaning: word.meaning,
+      example: word.example || '',
+      options: JSON.stringify(word.options || []),
+      correctIndex: typeof word.correctIndex === 'number' ? word.correctIndex : 0,
     });
     return true;
   } catch (err) {
     console.error('[Voco] scheduleTestNotification error:', err);
     return false;
+  }
+}
+
+/**
+ * Retrieves aggregate quiz statistics recorded by the native popup window.
+ */
+export async function getNativeQuizStats(): Promise<{
+  totalAnswered: number;
+  correctAnswered: number;
+  lastWord: string;
+  lastCorrect: boolean;
+  lastTime: number;
+} | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    return await VocoScheduler.getQuizStats();
+  } catch {
+    return null;
   }
 }
 

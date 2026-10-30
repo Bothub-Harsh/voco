@@ -17,6 +17,9 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class VocoAlarmScheduler {
     public static final String TAG = "VocoAlarmScheduler";
     public static final String PREFS_NAME = "voco_native_reminders";
@@ -183,24 +186,42 @@ public class VocoAlarmScheduler {
         Log.d(TAG, "All Voco alarms cancelled, generation invalidated (-1), and state set to disabled");
     }
 
-    public static void showNotification(Context context, String wordId, String wordText) {
+    /**
+     * Shows the practice reminder notification configured to launch the native
+     * VocoQuizDialogActivity popup directly when tapped, without waiting for the web app to load.
+     */
+    public static void showNotification(
+        Context context,
+        String wordId,
+        String wordText,
+        String meaning,
+        String example,
+        List<String> options,
+        int correctIndex
+    ) {
         createNotificationChannel(context);
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
-        Intent contentIntent = new Intent(context, MainActivity.class);
-        contentIntent.setAction(Intent.ACTION_MAIN);
-        contentIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        contentIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        // PendingIntent targeting the fast native VocoQuizDialogActivity popup!
+        Intent quizIntent = new Intent(context, VocoQuizDialogActivity.class);
+        quizIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         if (wordId != null && !wordId.isEmpty()) {
-            contentIntent.putExtra("quizWordId", wordId);
+            quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_WORD_ID, wordId);
         }
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_WORD, wordText);
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_MEANING, meaning);
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_EXAMPLE, example);
+        if (options != null) {
+            quizIntent.putStringArrayListExtra(VocoQuizDialogActivity.EXTRA_OPTIONS, new ArrayList<>(options));
+        }
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_CORRECT_INDEX, correctIndex);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent pi = PendingIntent.getActivity(context, (int) System.currentTimeMillis(), contentIntent, flags);
+        PendingIntent pi = PendingIntent.getActivity(context, (int) System.currentTimeMillis(), quizIntent, flags);
 
         String upperWord = (wordText != null && !wordText.isEmpty()) ? wordText.toUpperCase() : "VOCABULARY";
 
@@ -209,7 +230,7 @@ public class VocoAlarmScheduler {
             .setContentTitle("Voco — Practice Time! 📚")
             .setContentText("What does " + upperWord + " mean?")
             .setStyle(new NotificationCompat.BigTextStyle()
-                .bigText("What does " + upperWord + " mean?\nTap to practice this word with a quick quiz!"))
+                .bigText("What does " + upperWord + " mean?\nTap to practice with a quick interactive quiz!"))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
@@ -217,6 +238,10 @@ public class VocoAlarmScheduler {
             .setContentIntent(pi);
 
         nm.notify(NOTIFICATION_ID, builder.build());
-        Log.d(TAG, "Native notification delivered for word: " + upperWord);
+        Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (targets native quiz popup)");
+    }
+
+    public static void showNotification(Context context, String wordId, String wordText) {
+        showNotification(context, wordId, wordText, "Practice vocabulary meaning.", "", null, 0);
     }
 }

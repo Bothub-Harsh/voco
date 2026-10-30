@@ -25,6 +25,14 @@
 
         </activity>
 
+        <!-- Native Interactive Quiz Popup Activity -->
+        <activity
+            android:name=".VocoQuizDialogActivity"
+            android:theme="@style/Theme.Voco.QuizDialog"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
