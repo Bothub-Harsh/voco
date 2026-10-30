@@ -48,8 +48,10 @@ import { AddWordForm } from './components/AddWordForm';
 import { ReminderControls } from './components/ReminderControls';
 import { WordList } from './components/WordList';
 import { QuizScreen } from './components/QuizScreen';
+import { initTheme, toggleTheme, type Theme } from './services/theme';
 
 export function App() {
+  const [theme, setTheme] = useState<Theme>(() => initTheme());
   const [words, setWords] = useState<VocabularyWord[]>([]);
   const [activeQuizSession, setActiveQuizSession] = useState<ActiveQuizSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -617,23 +619,30 @@ export function App() {
     }
   };
 
+  const handleToggleTheme = () => {
+    const next = toggleTheme();
+    setTheme(next);
+  };
+
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] flex flex-col font-sans text-slate-800 safe-left safe-right">
+    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200">
       <Header
         isOnline={isOnline}
         backendStatus={backendStatus}
         savedWordsCount={words.length}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-4 sm:pt-6 pb-6 sm:pb-8">
         {/* Backend Connectivity / API Key Status Banner */}
         {backendStatus && !backendStatus.reachable && (
-          <div className="mb-5 p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs shadow-card flex items-start justify-between gap-3">
+          <div className="mb-5 p-4 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-card flex items-start justify-between gap-3">
             <div>
-              <p className="font-bold text-amber-950 text-sm">
+              <p className="font-bold text-amber-950 dark:text-amber-100 text-sm">
                 Connecting to Vocabulary Server...
               </p>
-              <p className="text-amber-800 mt-1 leading-relaxed">
+              <p className="text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
                 The cloud AI backend ({getApiBaseUrl()}) is currently unreachable or spinning up (on free tier hosting, waking up takes ~20-30 seconds). You can still practice saved words and write your own meanings offline!
               </p>
             </div>
@@ -648,12 +657,12 @@ export function App() {
         )}
 
         {backendStatus && backendStatus.reachable && !backendStatus.configured && (
-          <div className="mb-5 p-4 bg-rose-50/90 border border-rose-200/80 rounded-2xl text-rose-900 text-xs shadow-card">
-            <p className="font-bold text-rose-950 text-sm">
+          <div className="mb-5 p-4 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-2xl text-rose-900 dark:text-rose-200 text-xs shadow-card">
+            <p className="font-bold text-rose-950 dark:text-rose-100 text-sm">
               Backend Configuration Notice
             </p>
-            <p className="text-rose-800 mt-1 leading-relaxed">
-              The vocabulary server at <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
+            <p className="text-rose-800 dark:text-rose-300 mt-1 leading-relaxed">
+              The vocabulary server at <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
             </p>
           </div>
         )}
@@ -718,9 +727,9 @@ export function App() {
       )}
 
       {/* Clean Footer */}
-      <footer className="border-t border-slate-200/80 pt-6 text-center text-xs text-slate-400 bg-white/70 safe-pb-page">
-        <p className="font-semibold text-slate-600">Voco &bull; My Vocabulary</p>
-        <p className="text-[11px] text-slate-400 mt-1">Stored locally in IndexedDB &bull; Powered by Groq AI</p>
+      <footer className="border-t border-slate-200/80 dark:border-zinc-800/80 pt-6 text-center text-xs text-slate-400 dark:text-zinc-500 bg-white/70 dark:bg-black/80 safe-pb-page transition-colors">
+        <p className="font-semibold text-slate-600 dark:text-zinc-400">Voco &bull; My Vocabulary</p>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Stored locally in IndexedDB &bull; Powered by Groq AI</p>
       </footer>
     </div>
   );

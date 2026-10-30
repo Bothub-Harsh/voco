@@ -48,20 +48,20 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom">
-      <div className="bg-white w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-elevated border border-slate-200/90 p-5 sm:p-7 relative my-auto">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom transition-colors">
+      <div className="bg-white dark:bg-zinc-950 w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-5 sm:p-7 relative my-auto transition-colors">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-5">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex items-center text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors p-1.5 -ml-1.5 rounded-lg hover:bg-slate-100"
+            className="inline-flex items-center text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors p-1.5 -ml-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900"
           >
-            <ArrowLeft className="w-4 h-4 mr-1 text-slate-500" />
+            <ArrowLeft className="w-4 h-4 mr-1 text-slate-500 dark:text-zinc-400" />
             <span>Back</span>
           </button>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-100/90 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-indigo-500" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-100/90 dark:border-indigo-800/60 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
             <span>Practice Quiz</span>
           </span>
         </div>
@@ -69,14 +69,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
         {/* Target Word */}
         <div className="text-center mb-5 sm:mb-6">
           <div className="inline-flex items-center justify-center space-x-2">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 capitalize tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white capitalize tracking-tight">
               {quiz.word}
             </h2>
             {'speechSynthesis' in window && (
               <button
                 type="button"
                 onClick={speakWord}
-                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shrink-0"
+                className="p-1.5 text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-zinc-900 rounded-full transition-colors shrink-0"
                 title="Pronounce word"
                 aria-label="Pronounce word"
               >
@@ -84,7 +84,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
               </button>
             )}
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-zinc-400 font-medium mt-1">
             Choose the meaning that best describes this word:
           </p>
         </div>
@@ -96,24 +96,24 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
             const isSelected = selectedIndex === index;
             const isThisOptionCorrect = index === quiz.correctIndex;
 
-            let cardClasses = 'border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-slate-50/50 text-slate-700 shadow-xs';
-            let badgeClasses = 'bg-slate-100 text-slate-600';
+            let cardClasses = 'border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50/50 dark:hover:bg-zinc-800/60 text-slate-700 dark:text-zinc-200 shadow-xs';
+            let badgeClasses = 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300';
 
             if (!hasSubmitted) {
               if (isSelected) {
-                cardClasses = 'border-indigo-600 bg-indigo-50/50 text-indigo-950 ring-2 ring-indigo-500/20 shadow-xs';
-                badgeClasses = 'bg-indigo-600 text-white shadow-xs';
+                cardClasses = 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-200 ring-2 ring-indigo-500/20 shadow-xs';
+                badgeClasses = 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-xs';
               }
             } else {
               if (isThisOptionCorrect) {
-                cardClasses = 'border-emerald-500 bg-emerald-50/80 text-emerald-950 ring-2 ring-emerald-500/20 font-semibold';
+                cardClasses = 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-100 ring-2 ring-emerald-500/20 font-semibold';
                 badgeClasses = 'bg-emerald-600 text-white';
               } else if (isSelected && !isThisOptionCorrect) {
-                cardClasses = 'border-rose-400 bg-rose-50/80 text-rose-950 ring-2 ring-rose-400/20';
+                cardClasses = 'border-rose-400 bg-rose-50/80 dark:bg-rose-950/50 text-rose-950 dark:text-rose-100 ring-2 ring-rose-400/20';
                 badgeClasses = 'bg-rose-500 text-white';
               } else {
-                cardClasses = 'border-slate-100 bg-slate-50/40 text-slate-400 opacity-60';
-                badgeClasses = 'bg-slate-200 text-slate-400';
+                cardClasses = 'border-slate-100 dark:border-zinc-850 bg-slate-50/40 dark:bg-zinc-900/30 text-slate-400 dark:text-zinc-600 opacity-60';
+                badgeClasses = 'bg-slate-200 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500';
               }
             }
 
@@ -135,10 +135,10 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
                 </span>
 
                 {hasSubmitted && isThisOptionCorrect && (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 self-center" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 self-center" />
                 )}
                 {hasSubmitted && isSelected && !isThisOptionCorrect && (
-                  <XCircle className="w-5 h-5 text-rose-500 shrink-0 self-center" />
+                  <XCircle className="w-5 h-5 text-rose-500 dark:text-rose-400 shrink-0 self-center" />
                 )}
               </button>
             );
@@ -151,7 +151,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
             type="button"
             onClick={handleCheckAnswer}
             disabled={selectedIndex === null}
-            className="w-full py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold text-sm transition-all shadow-xs hover:shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/20"
+            className="w-full py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white font-bold text-sm transition-all shadow-xs hover:shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/20"
           >
             {selectedIndex === null ? 'Select an Answer' : 'Check Answer'}
           </button>
@@ -161,26 +161,26 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
             <div
               className={`p-3.5 sm:p-4 rounded-xl border text-center ${
                 isCorrect
-                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
-                  : 'bg-rose-50/90 border-rose-200 text-rose-950'
+                  ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200'
+                  : 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/60 text-rose-950 dark:text-rose-200'
               }`}
             >
               {isCorrect ? (
                 <>
-                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-emerald-700 font-bold text-sm sm:text-base">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-emerald-700 dark:text-emerald-400 font-bold text-sm sm:text-base">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     <span>Brilliant! That&apos;s correct.</span>
                   </div>
-                  <p className="text-xs text-emerald-800/90 leading-relaxed">{quiz.meaning}</p>
+                  <p className="text-xs text-emerald-800/90 dark:text-emerald-300 leading-relaxed">{quiz.meaning}</p>
                 </>
               ) : (
                 <>
-                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-rose-700 font-bold text-sm sm:text-base">
-                    <XCircle className="w-5 h-5 text-rose-500" />
+                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-rose-700 dark:text-rose-400 font-bold text-sm sm:text-base">
+                    <XCircle className="w-5 h-5 text-rose-500 dark:text-rose-400" />
                     <span>Not quite right</span>
                   </div>
-                  <p className="text-xs text-rose-900 leading-relaxed">
-                    Correct meaning: <span className="font-semibold">{quiz.meaning}</span>
+                  <p className="text-xs text-rose-900 dark:text-rose-300 leading-relaxed">
+                    Correct meaning: <span className="font-semibold text-rose-950 dark:text-rose-200">{quiz.meaning}</span>
                   </p>
                 </>
               )}
@@ -188,12 +188,12 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
 
             {/* Example sentence */}
             {quiz.example && (
-              <div className="bg-slate-50/90 rounded-xl p-3 sm:p-3.5 border border-slate-200/60">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
+              <div className="bg-slate-50/90 dark:bg-zinc-900/60 rounded-xl p-3 sm:p-3.5 border border-slate-200/60 dark:border-zinc-800">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-1 flex items-center gap-1">
                   <BookOpen className="w-3 h-3 text-indigo-400" />
                   <span>Example in context</span>
                 </p>
-                <p className="text-xs sm:text-sm text-slate-700 italic leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 italic leading-relaxed">
                   &ldquo;{quiz.example}&rdquo;
                 </p>
               </div>
@@ -204,9 +204,9 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
               <button
                 type="button"
                 onClick={handleTryAgain}
-                className="flex-1 inline-flex items-center justify-center py-2.5 px-4 border border-slate-200/90 hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl transition-all shadow-xs"
+                className="flex-1 inline-flex items-center justify-center py-2.5 px-4 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 active:bg-slate-100 dark:active:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
               >
-                <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-zinc-400" />
                 <span>Try Again</span>
               </button>
               <button
