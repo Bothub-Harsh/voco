@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Trash2, HelpCircle, Calendar, Sparkles, Edit3, RotateCw, AlertCircle, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Trash2, HelpCircle, Calendar, Sparkles, Edit3, RotateCw, AlertCircle, X, Search } from 'lucide-react';
 import type { VocabularyWord } from '../types';
 import { EditWordModal } from './EditWordModal';
 
@@ -28,6 +28,17 @@ export const WordList: React.FC<WordListProps> = ({
 }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingWord, setEditingWord] = useState<VocabularyWord | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredWords = useMemo(() => {
+    if (!searchQuery.trim()) return words;
+    const q = searchQuery.toLowerCase().trim();
+    return words.filter(
+      (w) =>
+        w.word.toLowerCase().includes(q) ||
+        w.meaning.toLowerCase().includes(q)
+    );
+  }, [words, searchQuery]);
 
   const handleDeleteClick = async (word: VocabularyWord) => {
     if (window.confirm(`Are you sure you want to delete "${word.word}" from your vocabulary?`)) {
@@ -42,38 +53,83 @@ export const WordList: React.FC<WordListProps> = ({
 
   if (words.length === 0) {
     return (
-      <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-10 text-center my-6 animate-fade-in-up transition-colors">
-        <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <Sparkles className="w-7 h-7" />
+      <div className="animate-fade-in-up">
+        <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-10 text-center transition-colors">
+          <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-bold text-slate-800 dark:text-zinc-100 mb-1.5">
+            No words saved yet
+          </h3>
+          <p className="text-sm text-slate-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
+            Go to the <strong className="text-slate-600 dark:text-zinc-300">Add Words</strong> tab to start building your vocabulary.
+          </p>
         </div>
-        <h3 className="text-base font-bold text-slate-800 dark:text-zinc-100 mb-1.5">
-          No words saved yet
-        </h3>
-        <p className="text-sm text-slate-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
-          Type any English word above and click <strong className="text-slate-600 dark:text-zinc-300">Add Word</strong> to get started.
-        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 mb-10">
-      {/* Section header */}
+    <div className="space-y-3 animate-fade-in-up">
+      {/* Section header with count */}
       <div className="flex items-center justify-between px-1">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
-          Saved Words
+          Your Vocabulary
           <span className="ml-2 text-xs font-semibold text-slate-400 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
             {words.length}
           </span>
         </h2>
-        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
-          Click Practice to start a quiz
-        </span>
+        {filteredWords.length !== words.length && (
+          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
+            Showing {filteredWords.length} of {words.length}
+          </span>
+        )}
       </div>
+
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-zinc-500 pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search words or meanings..."
+          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50/50 dark:hover:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500"
+          autoComplete="off"
+          spellCheck="false"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 transition-colors"
+            aria-label="Clear search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* No search results */}
+      {filteredWords.length === 0 && searchQuery.trim() && (
+        <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-8 text-center transition-colors">
+          <Search className="w-8 h-8 text-slate-300 dark:text-zinc-600 mx-auto mb-2" />
+          <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">
+            No words matching "{searchQuery}"
+          </p>
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold"
+          >
+            Clear search
+          </button>
+        </div>
+      )}
 
       {/* Word cards */}
       <div className="grid gap-3">
-        {words.map((item, index) => {
+        {filteredWords.map((item, index) => {
           const dateStr = new Date(item.dateAdded).toLocaleDateString(undefined, {
             month: 'short',
             day: 'numeric',

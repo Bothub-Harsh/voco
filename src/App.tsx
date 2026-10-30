@@ -43,15 +43,22 @@ import {
 } from './services/notifications';
 import { Header } from './components/Header';
 import { StorageStatusIndicator } from './components/StorageStatusIndicator';
-import { BackupControls } from './components/BackupControls';
 import { AddWordForm } from './components/AddWordForm';
 import { ReminderControls } from './components/ReminderControls';
 import { WordList } from './components/WordList';
 import { QuizScreen } from './components/QuizScreen';
+import { BottomNav, type TabId } from './components/BottomNav';
+import { SettingsTab } from './components/SettingsTab';
 import { initTheme, toggleTheme, type Theme } from './services/theme';
+import { CheckCircle2 } from 'lucide-react';
 
 export function App() {
+  // ─── Core UI state ───
   const [theme, setTheme] = useState<Theme>(() => initTheme());
+  const [activeTab, setActiveTab] = useState<TabId>('add');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // ─── Data state ───
   const [words, setWords] = useState<VocabularyWord[]>([]);
   const [activeQuizSession, setActiveQuizSession] = useState<ActiveQuizSession | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -78,7 +85,7 @@ export function App() {
   const wordsRef = useRef<VocabularyWord[]>(words);
   wordsRef.current = words;
 
-  // Load words from IndexedDB (IndexedDB is the sole source of truth)
+  // ─── Data loading ───
   const refreshWords = useCallback(async () => {
     try {
       const loaded = await getAllWords();
@@ -124,6 +131,7 @@ export function App() {
     }
   }, [openQuizForWord]);
 
+  // ─── Initialization ───
   useEffect(() => {
     const initializeStorage = async () => {
       // 1. Request persistent storage from browser
@@ -238,7 +246,7 @@ export function App() {
     };
   }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
 
-  // Handle active reminder timers and visual countdown
+  // ─── Reminder countdown timer (runs regardless of active tab) ───
   useEffect(() => {
     if (!remindersActive) {
       setSecondsRemaining(null);
@@ -284,6 +292,8 @@ export function App() {
     return () => clearInterval(ticker);
   }, [remindersActive, reminderInterval, openQuizForWord]);
 
+  // ─── Handlers ───
+
   const handleChangeInterval = async (newMinutes: number) => {
     const clamped = Math.max(1, Math.floor(newMinutes));
     setReminderInterval(clamped);
@@ -300,6 +310,11 @@ export function App() {
         await scheduleNativeReminders(wordsRef.current, clamped);
       }
     }
+  };
+
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   // Add word action: Generates content, validates, then awaits IndexedDB write before updating list
@@ -341,6 +356,9 @@ export function App() {
 
       // Highlight the newly added word for the user to view its meaning and example
       setHighlightedWordId(saved.id);
+
+      // Show success message
+      showSuccess(`"${saved.word}" saved successfully!`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add word.';
       setErrorMessage(msg);
@@ -388,6 +406,9 @@ export function App() {
 
       // Highlight the newly added word for the user
       setHighlightedWordId(saved.id);
+
+      // Show success message
+      showSuccess(`"${saved.word}" saved successfully!`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save manual word.';
       setErrorMessage(msg);
@@ -624,6 +645,7 @@ export function App() {
     setTheme(next);
   };
 
+  // ─── Render ───
   return (
     <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200">
       <Header
@@ -634,90 +656,125 @@ export function App() {
         onToggleTheme={handleToggleTheme}
       />
 
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-4 sm:pt-6 pb-6 sm:pb-8">
-        {/* Backend Connectivity / API Key Status Banner */}
-        {backendStatus && !backendStatus.reachable && (
-          <div className="mb-5 p-4 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-card flex items-start justify-between gap-3">
-            <div>
-              <p className="font-bold text-amber-950 dark:text-amber-100 text-sm">
-                Connecting to Vocabulary Server...
-              </p>
-              <p className="text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                The cloud AI backend ({getApiBaseUrl()}) is currently unreachable or spinning up (on free tier hosting, waking up takes ~20-30 seconds). You can still practice saved words and write your own meanings offline!
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleCheckBackend}
-              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors shadow-xs"
-            >
-              Retry
-            </button>
+      {/* Main content area — pb-20 ensures content isn't hidden behind bottom nav */}
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-4 sm:pt-5 pb-24">
+
+        {/* ━━━ TAB 1: ADD WORDS ━━━ */}
+        {activeTab === 'add' && (
+          <div className="animate-fade-in-up">
+            {/* Backend Connectivity / API Key Status Banner */}
+            {backendStatus && !backendStatus.reachable && (
+              <div className="mb-4 p-4 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-900 dark:text-amber-200 text-xs shadow-card flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-amber-950 dark:text-amber-100 text-sm">
+                    Connecting to Vocabulary Server...
+                  </p>
+                  <p className="text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                    The cloud AI backend ({getApiBaseUrl()}) is currently unreachable or spinning up (on free tier hosting, waking up takes ~20-30 seconds). You can still practice saved words and write your own meanings offline!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckBackend}
+                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors shadow-xs"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {backendStatus && backendStatus.reachable && !backendStatus.configured && (
+              <div className="mb-4 p-4 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-2xl text-rose-900 dark:text-rose-200 text-xs shadow-card">
+                <p className="font-bold text-rose-950 dark:text-rose-100 text-sm">
+                  Backend Configuration Notice
+                </p>
+                <p className="text-rose-800 dark:text-rose-300 mt-1 leading-relaxed">
+                  The vocabulary server at <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
+                </p>
+              </div>
+            )}
+
+            {/* Storage Status */}
+            <StorageStatusIndicator
+              status={storageStatus}
+              isPersistent={isPersistent}
+            />
+
+            {/* Success message */}
+            {successMessage && (
+              <div className="mb-4 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 rounded-2xl text-emerald-800 dark:text-emerald-200 text-sm flex items-center space-x-2.5 shadow-card animate-fade-in-up">
+                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    Word saved successfully!
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    {successMessage}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Add Word Form */}
+            <AddWordForm
+              onAddWord={handleAddWord}
+              onAddManualWord={handleAddManualWord}
+              isLoading={isLoading}
+              error={errorMessage}
+              onRetry={handleRetry}
+              lastFailedWord={lastFailedWord}
+            />
+
+            {/* Practice Reminders */}
+            <ReminderControls
+              remindersActive={remindersActive}
+              onStartReminders={handleStartReminders}
+              onStopReminders={handleStopReminders}
+              onTestNotification={handleTestNotification}
+              words={words}
+              permission={permission}
+              intervalMinutes={reminderInterval}
+              onChangeInterval={handleChangeInterval}
+              secondsRemaining={secondsRemaining}
+            />
           </div>
         )}
 
-        {backendStatus && backendStatus.reachable && !backendStatus.configured && (
-          <div className="mb-5 p-4 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-2xl text-rose-900 dark:text-rose-200 text-xs shadow-card">
-            <p className="font-bold text-rose-950 dark:text-rose-100 text-sm">
-              Backend Configuration Notice
-            </p>
-            <p className="text-rose-800 dark:text-rose-300 mt-1 leading-relaxed">
-              The vocabulary server at <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">{getApiBaseUrl()}</code> is online, but <code className="bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.5 rounded font-mono font-semibold">GROQ_API_KEY</code> is not configured on the backend hosting service. Please set the key in your Render dashboard environment variables.
-            </p>
-          </div>
+        {/* ━━━ TAB 2: SAVED WORDS ━━━ */}
+        {activeTab === 'saved' && (
+          <WordList
+            words={words}
+            onOpenQuiz={(word) => openQuizForWord(word)}
+            onDeleteWord={handleDeleteWord}
+            onUpdateWord={handleUpdateWord}
+            onRefreshWord={handleRefreshWord}
+            refreshingWordId={refreshingWordId}
+            refreshError={refreshError}
+            onClearRefreshError={handleClearRefreshError}
+            highlightedWordId={highlightedWordId}
+          />
         )}
 
-        {/* Visible IndexedDB Storage Status */}
-        <StorageStatusIndicator
-          status={storageStatus}
-          isPersistent={isPersistent}
-        />
-
-        {/* 1. Add Word Form (AI Generation or Manual Meaning) */}
-        <AddWordForm
-          onAddWord={handleAddWord}
-          onAddManualWord={handleAddManualWord}
-          isLoading={isLoading}
-          error={errorMessage}
-          onRetry={handleRetry}
-          lastFailedWord={lastFailedWord}
-        />
-
-        {/* 2. Backup & Restore Controls */}
-        <BackupControls
-          totalWords={words.length}
-          onRefreshWords={refreshWords}
-          onStatusChange={handleBackupStatusChange}
-        />
-
-        {/* 3. Practice Reminders Control with Time Adjustment & Live Countdown */}
-        <ReminderControls
-          remindersActive={remindersActive}
-          onStartReminders={handleStartReminders}
-          onStopReminders={handleStopReminders}
-          onTestNotification={handleTestNotification}
-          words={words}
-          permission={permission}
-          intervalMinutes={reminderInterval}
-          onChangeInterval={handleChangeInterval}
-          secondsRemaining={secondsRemaining}
-        />
-
-        {/* 4. Saved Words List */}
-        <WordList
-          words={words}
-          onOpenQuiz={(word) => openQuizForWord(word)}
-          onDeleteWord={handleDeleteWord}
-          onUpdateWord={handleUpdateWord}
-          onRefreshWord={handleRefreshWord}
-          refreshingWordId={refreshingWordId}
-          refreshError={refreshError}
-          onClearRefreshError={handleClearRefreshError}
-          highlightedWordId={highlightedWordId}
-        />
+        {/* ━━━ TAB 3: SETTINGS ━━━ */}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            totalWords={words.length}
+            onRefreshWords={refreshWords}
+            onStatusChange={handleBackupStatusChange}
+            permission={permission}
+            isPersistent={isPersistent}
+            isOnline={isOnline}
+            backendStatus={backendStatus}
+            storageStatus={storageStatus}
+          />
+        )}
       </main>
 
-      {/* Quiz Modal / Screen */}
+      {/* Quiz Modal — always rendered on top regardless of active tab */}
       {activeQuizSession && (
         <QuizScreen
           quiz={activeQuizSession}
@@ -726,11 +783,12 @@ export function App() {
         />
       )}
 
-      {/* Clean Footer */}
-      <footer className="border-t border-slate-200/80 dark:border-zinc-800/80 pt-6 text-center text-xs text-slate-400 dark:text-zinc-500 bg-white/70 dark:bg-black/80 safe-pb-page transition-colors">
-        <p className="font-semibold text-slate-600 dark:text-zinc-400">Voco &bull; My Vocabulary</p>
-        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1">Stored locally in IndexedDB &bull; Powered by Groq AI</p>
-      </footer>
+      {/* Fixed Bottom Navigation */}
+      <BottomNav
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        savedWordsCount={words.length}
+      />
     </div>
   );
 }
