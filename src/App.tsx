@@ -616,14 +616,14 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-slate-800">
+    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] flex flex-col font-sans text-slate-800 safe-left safe-right">
       <Header
         isOnline={isOnline}
         backendStatus={backendStatus}
         savedWordsCount={words.length}
       />
 
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-4 sm:pt-6 pb-6 sm:pb-8">
         {/* Backend Connectivity / API Key Status Banner */}
         {backendStatus && !backendStatus.reachable && (
           <div className="mb-5 p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs shadow-card flex items-start justify-between gap-3">
@@ -716,7 +716,7 @@ export function App() {
       )}
 
       {/* Clean Footer */}
-      <footer className="border-t border-slate-200/80 py-6 text-center text-xs text-slate-400 bg-white/50">
+      <footer className="border-t border-slate-200/80 pt-6 text-center text-xs text-slate-400 bg-white/70 safe-pb-page">
         <p className="font-semibold text-slate-600">Voco &bull; My Vocabulary</p>
         <p className="text-[11px] text-slate-400 mt-1">Stored locally in IndexedDB &bull; Powered by Groq AI</p>
       </footer>

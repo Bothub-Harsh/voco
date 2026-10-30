@@ -52,11 +52,11 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-card border border-slate-200/80 p-5 sm:p-6 mb-5">
+    <div className="bg-white rounded-2xl shadow-card border border-slate-200/80 p-4 sm:p-6 mb-4 sm:mb-5">
       {/* Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4">
         <div>
-          <div className="flex items-center space-x-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-bold text-slate-900 tracking-tight">
               Practice Reminders
             </h2>

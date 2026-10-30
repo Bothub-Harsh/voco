@@ -81,7 +81,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-card border border-slate-200/80 p-4 sm:p-5 mb-5">
+    <div className="bg-white rounded-2xl shadow-card border border-slate-200/80 p-4 sm:p-5 mb-4 sm:mb-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center space-x-1.5">
