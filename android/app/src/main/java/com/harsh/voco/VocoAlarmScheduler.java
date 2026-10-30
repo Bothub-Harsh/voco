@@ -12,6 +12,7 @@ import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -19,12 +20,21 @@ import androidx.core.app.NotificationCompat;
 public class VocoAlarmScheduler {
     public static final String TAG = "VocoAlarmScheduler";
     public static final String PREFS_NAME = "voco_native_reminders";
+
+    // SharedPreferences keys
     public static final String KEY_ENABLED = "reminders_enabled";
     public static final String KEY_INTERVAL = "reminder_interval_mins";
     public static final String KEY_WORDS = "words_json";
-    public static final String KEY_NEXT_TRIGGER = "next_reminder_timestamp";
+    public static final String KEY_NEXT_TRIGGER = "next_reminder_timestamp"; // wall-clock ms for UI countdown
+    public static final String KEY_TARGET_ELAPSED = "target_elapsed_realtime"; // monotonic ms for native scheduling
+    public static final String KEY_SCHEDULE_GENERATION = "schedule_generation"; // token to invalidate stale alarms
     public static final String KEY_LAST_WORD_ID = "last_word_id";
 
+    // Intent actions and extras
+    public static final String ACTION_PRACTICE_REMINDER = "com.harsh.voco.PRACTICE_REMINDER";
+    public static final String EXTRA_GENERATION = "com.harsh.voco.EXTRA_GENERATION";
+
+    // Notification and Alarm IDs
     public static final String CHANNEL_ID = "voco_reminders";
     public static final String CHANNEL_NAME = "Voco Practice Reminders";
     public static final int ALARM_REQUEST_CODE = 44401;
@@ -74,15 +84,38 @@ public class VocoAlarmScheduler {
         return true;
     }
 
-    public static void scheduleNextAlarm(Context context, long triggerAtMillis, int intervalMins) {
+    /**
+     * Schedules the next reminder alarm using monotonic ELAPSED_REALTIME_WAKEUP clock
+     * and tags it with the active schedule generation token.
+     */
+    public static void scheduleNextAlarm(Context context, long targetElapsedRealtime, int intervalMins, long generation) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (am == null) {
             Log.e(TAG, "AlarmManager not available");
             return;
         }
 
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long intervalMs = intervalMins * 60 * 1000L;
+
+        // Ensure target is strictly in the future
+        if (targetElapsedRealtime <= nowElapsed) {
+            targetElapsedRealtime = nowElapsed + intervalMs;
+        }
+
+        long remainingMs = targetElapsedRealtime - nowElapsed;
+        long wallClockTarget = System.currentTimeMillis() + remainingMs;
+
+        // Persist both monotonic deadline and estimated wall-clock timestamp for UI countdown
+        getPrefs(context).edit()
+            .putLong(KEY_TARGET_ELAPSED, targetElapsedRealtime)
+            .putLong(KEY_NEXT_TRIGGER, wallClockTarget)
+            .putLong(KEY_SCHEDULE_GENERATION, generation)
+            .apply();
+
         Intent intent = new Intent(context, VocoAlarmReceiver.class);
-        intent.setAction("com.harsh.voco.PRACTICE_REMINDER");
+        intent.setAction(ACTION_PRACTICE_REMINDER);
+        intent.putExtra(EXTRA_GENERATION, generation);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -91,43 +124,41 @@ public class VocoAlarmScheduler {
 
         PendingIntent pi = PendingIntent.getBroadcast(context, ALARM_REQUEST_CODE, intent, flags);
 
-        long now = System.currentTimeMillis();
-        if (triggerAtMillis <= now) {
-            triggerAtMillis = now + (intervalMins * 60 * 1000L);
-        }
-
         boolean canExact = canScheduleExactAlarms(context);
-
         if (canExact) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, targetElapsedRealtime, pi);
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-                am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, targetElapsedRealtime, pi);
             } else {
-                am.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, targetElapsedRealtime, pi);
             }
-            Log.d(TAG, "Scheduled EXACT native alarm at " + triggerAtMillis + " (in " + ((triggerAtMillis - now) / 1000) + "s)");
+            Log.d(TAG, "Scheduled EXACT ELAPSED_REALTIME_WAKEUP alarm: gen=" + generation + ", targetElapsed=" + targetElapsedRealtime + " (in " + (remainingMs / 1000) + "s)");
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, targetElapsedRealtime, pi);
             } else {
-                am.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                am.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, targetElapsedRealtime, pi);
             }
-            Log.w(TAG, "Exact alarms not permitted. Scheduled allow-while-idle alarm at " + triggerAtMillis);
+            Log.w(TAG, "Exact alarms not permitted. Scheduled allow-while-idle ELAPSED_REALTIME_WAKEUP alarm: gen=" + generation + " in " + (remainingMs / 1000) + "s");
         }
-
-        getPrefs(context).edit().putLong(KEY_NEXT_TRIGGER, triggerAtMillis).apply();
     }
 
+    /**
+     * Completely cancels all scheduled alarms, invalidates the generation token,
+     * clears active notifications, and updates persisted state to disabled.
+     */
     public static void cancelAlarms(Context context) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
             Intent intent = new Intent(context, VocoAlarmReceiver.class);
-            intent.setAction("com.harsh.voco.PRACTICE_REMINDER");
-            int flags = PendingIntent.FLAG_NO_CREATE;
+            intent.setAction(ACTION_PRACTICE_REMINDER);
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 flags |= PendingIntent.FLAG_IMMUTABLE;
             }
+
             PendingIntent pi = PendingIntent.getBroadcast(context, ALARM_REQUEST_CODE, intent, flags);
             if (pi != null) {
                 am.cancel(pi);
@@ -138,13 +169,18 @@ public class VocoAlarmScheduler {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
             nm.cancel(NOTIFICATION_ID);
+            nm.cancelAll();
         }
 
+        // Invalidate generation to -1L so any in-flight intent is immediately dropped
         getPrefs(context).edit()
             .putBoolean(KEY_ENABLED, false)
+            .putLong(KEY_SCHEDULE_GENERATION, -1L)
+            .remove(KEY_TARGET_ELAPSED)
             .remove(KEY_NEXT_TRIGGER)
             .apply();
-        Log.d(TAG, "All Voco alarms cancelled and state set to disabled");
+
+        Log.d(TAG, "All Voco alarms cancelled, generation invalidated (-1), and state set to disabled");
     }
 
     public static void showNotification(Context context, String wordId, String wordText) {
@@ -184,4 +220,3 @@ public class VocoAlarmScheduler {
         Log.d(TAG, "Native notification delivered for word: " + upperWord);
     }
 }
-

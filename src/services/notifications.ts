@@ -9,6 +9,7 @@ interface VocoSchedulerPlugin {
   startReminders(options: { intervalMinutes: number; words: string }): Promise<{
     success: boolean;
     nextTrigger: number;
+    generation?: number;
     exactAlarmGranted: boolean;
   }>;
   stopReminders(): Promise<{ success: boolean }>;
@@ -18,6 +19,7 @@ interface VocoSchedulerPlugin {
     active: boolean;
     intervalMinutes: number;
     nextTrigger: number;
+    generation?: number;
     exactAlarmGranted: boolean;
   }>;
   checkExactAlarmPermission(): Promise<{ exact_alarm_granted: boolean }>;
@@ -366,6 +368,7 @@ export async function getNativeReminderStatus(): Promise<{
   active: boolean;
   intervalMinutes: number;
   nextTrigger: number;
+  generation?: number;
   exactAlarmGranted: boolean;
 } | null> {
   if (!Capacitor.isNativePlatform()) return null;

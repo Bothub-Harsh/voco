@@ -144,15 +144,21 @@ export function App() {
         await ensureNotificationChannel();
         try {
           const nativeStatus = await getNativeReminderStatus();
-          if (nativeStatus && nativeStatus.active) {
-            persistRemindersActive(true);
-            setRemindersActiveState(true);
-            if (nativeStatus.intervalMinutes) {
-              setReminderInterval(nativeStatus.intervalMinutes);
-              setSavedReminderInterval(nativeStatus.intervalMinutes);
-            }
-            if (nativeStatus.nextTrigger && nativeStatus.nextTrigger > Date.now()) {
-              setNextReminderTimestamp(nativeStatus.nextTrigger);
+          if (nativeStatus) {
+            if (nativeStatus.active) {
+              persistRemindersActive(true);
+              setRemindersActiveState(true);
+              if (nativeStatus.intervalMinutes) {
+                setReminderInterval(nativeStatus.intervalMinutes);
+                setSavedReminderInterval(nativeStatus.intervalMinutes);
+              }
+              if (nativeStatus.nextTrigger && nativeStatus.nextTrigger > Date.now()) {
+                setNextReminderTimestamp(nativeStatus.nextTrigger);
+              }
+            } else {
+              persistRemindersActive(false);
+              setRemindersActiveState(false);
+              setNextReminderTimestamp(null);
             }
           }
         } catch (e) {
@@ -548,9 +554,10 @@ export function App() {
       persistRemindersActive(true);
       setRemindersActiveState(true);
 
-      const target = Date.now() + reminderInterval * 60 * 1000;
+      const target = getNextReminderTimestamp() || (Date.now() + reminderInterval * 60 * 1000);
       setNextReminderTimestamp(target);
-      setSecondsRemaining(reminderInterval * 60);
+      const remainingSecs = Math.max(0, Math.ceil((target - Date.now()) / 1000));
+      setSecondsRemaining(remainingSecs > 0 ? remainingSecs : reminderInterval * 60);
     } else {
       if (isNativeApp()) {
         alert(

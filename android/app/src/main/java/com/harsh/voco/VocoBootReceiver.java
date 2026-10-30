@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 import android.util.Log;
 
 public class VocoBootReceiver extends BroadcastReceiver {
@@ -25,9 +26,12 @@ public class VocoBootReceiver extends BroadcastReceiver {
         int intervalMins = prefs.getInt(VocoAlarmScheduler.KEY_INTERVAL, 5);
         if (intervalMins < 1) intervalMins = 1;
 
-        long nextTrigger = System.currentTimeMillis() + (intervalMins * 60 * 1000L);
-        VocoAlarmScheduler.scheduleNextAlarm(context, nextTrigger, intervalMins);
-        Log.d(TAG, "Restored active Voco reminders on reboot. Next reminder in " + intervalMins + " minutes.");
+        // Fresh schedule generation token after reboot
+        long newGeneration = System.currentTimeMillis();
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long targetElapsed = nowElapsed + (intervalMins * 60 * 1000L);
+
+        VocoAlarmScheduler.scheduleNextAlarm(context, targetElapsed, intervalMins, newGeneration);
+        Log.d(TAG, "Restored active Voco reminders on reboot with gen=" + newGeneration + ". Next in " + intervalMins + " mins.");
     }
 }
-

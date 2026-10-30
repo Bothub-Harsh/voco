@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -53,18 +54,30 @@ public class VocoNotificationPlugin extends Plugin {
         Context ctx = getContext();
         VocoAlarmScheduler.createNotificationChannel(ctx);
 
+        // Cancel any prior alarms to avoid any overlapping triggers
+        VocoAlarmScheduler.cancelAlarms(ctx);
+
+        // Generate a new unique generation session token
+        long generation = System.currentTimeMillis();
+
         SharedPreferences.Editor editor = VocoAlarmScheduler.getPrefs(ctx).edit();
         editor.putBoolean(VocoAlarmScheduler.KEY_ENABLED, true);
         editor.putInt(VocoAlarmScheduler.KEY_INTERVAL, intervalMins);
         editor.putString(VocoAlarmScheduler.KEY_WORDS, wordsJson);
+        editor.putLong(VocoAlarmScheduler.KEY_SCHEDULE_GENERATION, generation);
         editor.apply();
 
-        long firstTrigger = System.currentTimeMillis() + (intervalMins * 60 * 1000L);
-        VocoAlarmScheduler.scheduleNextAlarm(ctx, firstTrigger, intervalMins);
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long intervalMs = intervalMins * 60 * 1000L;
+        long targetElapsed = nowElapsed + intervalMs;
+        long wallClockTarget = System.currentTimeMillis() + intervalMs;
+
+        VocoAlarmScheduler.scheduleNextAlarm(ctx, targetElapsed, intervalMins, generation);
 
         JSObject ret = new JSObject();
         ret.put("success", true);
-        ret.put("nextTrigger", firstTrigger);
+        ret.put("nextTrigger", wallClockTarget);
+        ret.put("generation", generation);
         ret.put("exactAlarmGranted", VocoAlarmScheduler.canScheduleExactAlarms(ctx));
         call.resolve(ret);
     }
@@ -110,11 +123,13 @@ public class VocoNotificationPlugin extends Plugin {
         boolean enabled = prefs.getBoolean(VocoAlarmScheduler.KEY_ENABLED, false);
         int intervalMins = prefs.getInt(VocoAlarmScheduler.KEY_INTERVAL, 5);
         long nextTrigger = prefs.getLong(VocoAlarmScheduler.KEY_NEXT_TRIGGER, 0);
+        long generation = prefs.getLong(VocoAlarmScheduler.KEY_SCHEDULE_GENERATION, -1L);
 
         JSObject ret = new JSObject();
         ret.put("active", enabled);
         ret.put("intervalMinutes", intervalMins);
         ret.put("nextTrigger", nextTrigger);
+        ret.put("generation", generation);
         ret.put("exactAlarmGranted", VocoAlarmScheduler.canScheduleExactAlarms(ctx));
         call.resolve(ret);
     }
@@ -178,4 +193,3 @@ public class VocoNotificationPlugin extends Plugin {
         call.resolve(ret);
     }
 }
-
