@@ -25,13 +25,18 @@
 
         </activity>
 
-        <!-- Native Interactive Quiz Popup Activity -->
+        <!-- Native Interactive Quiz Popup Activity (Floating over any foreground app) -->
         <activity
             android:name=".VocoQuizDialogActivity"
             android:theme="@style/Theme.Voco.QuizDialog"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
             android:excludeFromRecents="true"
-            android:noHistory="false"
-            android:exported="false" />
+            android:noHistory="true"
+            android:autoRemoveFromRecents="true"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="stateHidden" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

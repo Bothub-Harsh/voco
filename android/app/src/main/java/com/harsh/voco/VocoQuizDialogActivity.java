@@ -5,15 +5,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
@@ -58,19 +61,9 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_voco_quiz_dialog);
 
-        // Responsive dialog sizing: 92% screen width up to a max of 420dp
-        DisplayMetrics dm = getResources().getDisplayMetrics();
-        int screenWidth = dm.widthPixels;
-        int maxDialogWidth = (int) (420 * dm.density);
-        int targetWidth = (int) (screenWidth * 0.92);
-        if (targetWidth > maxDialogWidth) {
-            targetWidth = maxDialogWidth;
-        }
-
-        WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.width = targetWidth;
-        lp.height = WindowManager.LayoutParams.WRAP_CONTENT;
-        getWindow().setAttributes(lp);
+        // Configure window to match parent so scrim covers screen and dims underlying app (WhatsApp, etc.)
+        getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
+        getWindow().setBackgroundDrawableResource(android.R.color.transparent);
 
         // Cancel notification since the user has tapped it and opened the quiz
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -78,8 +71,30 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             nm.cancel(VocoAlarmScheduler.NOTIFICATION_ID);
         }
 
-        // Read intent extras
-        Intent intent = getIntent();
+        // Handle Android system back gesture/button cleanly
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                dismissQuiz();
+            }
+        });
+
+        readIntentData(getIntent());
+        initViews();
+        applyResponsiveCardWidth();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        readIntentData(intent);
+        hasAnswered = false;
+        initViews();
+        applyResponsiveCardWidth();
+    }
+
+    private void readIntentData(Intent intent) {
         if (intent != null) {
             wordId = intent.getStringExtra(EXTRA_WORD_ID);
             wordText = intent.getStringExtra(EXTRA_WORD);
@@ -88,6 +103,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             ArrayList<String> extraOpts = intent.getStringArrayListExtra(EXTRA_OPTIONS);
             if (extraOpts != null && extraOpts.size() >= 4) {
                 options = extraOpts;
+            } else {
+                options = new ArrayList<>();
             }
             correctIndex = intent.getIntExtra(EXTRA_CORRECT_INDEX, 0);
         }
@@ -102,16 +119,44 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             options = fallbackOptions(correctMeaning);
             correctIndex = 0;
         }
+    }
 
-        initViews();
+    private void applyResponsiveCardWidth() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int screenWidth = dm.widthPixels;
+        int maxDialogWidth = (int) (420 * dm.density);
+        int targetWidth = Math.min((int) (screenWidth * 0.92), maxDialogWidth);
+
+        View card = findViewById(R.id.quiz_card_container);
+        if (card != null) {
+            ViewGroup.LayoutParams lp = card.getLayoutParams();
+            if (lp != null) {
+                lp.width = targetWidth;
+                card.setLayoutParams(lp);
+            }
+        }
     }
 
     private void initViews() {
+        // Outside scrim touch listener: dismiss dialog and return user to current app
+        View rootScrim = findViewById(R.id.quiz_root_scrim);
+        if (rootScrim != null) {
+            rootScrim.setOnClickListener(v -> dismissQuiz());
+        }
+
+        // Prevent touches on the quiz card itself from dismissing the dialog
+        View cardContainer = findViewById(R.id.quiz_card_container);
+        if (cardContainer != null) {
+            cardContainer.setOnClickListener(v -> {
+                // Absorb click inside card
+            });
+        }
+
         TextView textWord = findViewById(R.id.text_word);
         textWord.setText(wordText.toUpperCase());
 
         ImageView btnDismissX = findViewById(R.id.btn_dismiss_x);
-        btnDismissX.setOnClickListener(v -> finish());
+        btnDismissX.setOnClickListener(v -> dismissQuiz());
 
         optionLayouts[0] = findViewById(R.id.layout_option_a);
         optionLayouts[1] = findViewById(R.id.layout_option_b);
@@ -138,22 +183,26 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         Button btnClose = findViewById(R.id.btn_close);
         Button btnOpenApp = findViewById(R.id.btn_open_app);
 
+        // Reset state for new intent or initial load
+        layoutFeedback.setVisibility(View.GONE);
         for (int i = 0; i < 4; i++) {
             optionTexts[i].setText(options.get(i));
+            optionLayouts[i].setBackgroundResource(R.drawable.bg_quiz_option_default);
+            optionLayouts[i].setClickable(true);
+            optionLayouts[i].setFocusable(true);
+
+            optionBadges[i].setBackgroundResource(R.drawable.bg_quiz_badge_default);
+            optionBadges[i].setTextColor(Color.parseColor("#475569"));
+
             final int index = i;
             optionLayouts[i].setOnClickListener(v -> handleOptionSelected(index));
         }
 
-        btnClose.setOnClickListener(v -> finish());
-        btnOpenApp.setOnClickListener(v -> {
-            Intent mainIntent = new Intent(VocoQuizDialogActivity.this, MainActivity.class);
-            mainIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            if (wordId != null && !wordId.isEmpty()) {
-                mainIntent.putExtra("quizWordId", wordId);
-            }
-            startActivity(mainIntent);
-            finish();
-        });
+        // LEFT BUTTON: Close - immediately finishes popup task and returns user to previous app
+        btnClose.setOnClickListener(v -> dismissQuiz());
+
+        // RIGHT BUTTON: Open Voco - explicitly launches main Voco React activity only when tapped
+        btnOpenApp.setOnClickListener(v -> openMainVocoApp());
     }
 
     private void handleOptionSelected(int chosenIndex) {
@@ -210,6 +259,31 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         recordQuizStats(wordText, isCorrect);
     }
 
+    /**
+     * Finishes and removes this isolated dialog task, instantly restoring
+     * whichever app the user was previously using (WhatsApp, YouTube, Chrome, etc.).
+     */
+    private void dismissQuiz() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+        } else {
+            finish();
+        }
+    }
+
+    /**
+     * Explicitly launches the main Voco application only when the user taps "Open Voco".
+     */
+    private void openMainVocoApp() {
+        Intent mainIntent = new Intent(this, MainActivity.class);
+        mainIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        if (wordId != null && !wordId.isEmpty()) {
+            mainIntent.putExtra("quizWordId", wordId);
+        }
+        startActivity(mainIntent);
+        dismissQuiz();
+    }
+
     private void recordQuizStats(String word, boolean isCorrect) {
         try {
             SharedPreferences prefs = getSharedPreferences(PREFS_QUIZ_STATS, MODE_PRIVATE);
@@ -236,4 +310,3 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         return list;
     }
 }
-

@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/quiz_root_scrim"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#660F172A"
+    android:background="@android:color/transparent"
     android:padding="16dp">
 
     <ScrollView
+        android:id="@+id/quiz_scroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
@@ -13,9 +15,13 @@
         android:scrollbars="none">
 
         <LinearLayout
+            android:id="@+id/quiz_card_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
             android:background="@drawable/bg_quiz_card"
+            android:clickable="true"
+            android:focusable="true"
             android:orientation="vertical"
             android:padding="20dp">
 
@@ -297,6 +303,7 @@
                     android:layout_marginTop="14dp"
                     android:orientation="horizontal">
 
+                    <!-- LEFT BUTTON: Close (Primary filled indigo, white text, clear emphasis) -->
                     <Button
                         android:id="@+id/btn_close"
                         style="?android:attr/borderlessButtonStyle"
@@ -304,13 +311,14 @@
                         android:layout_height="44dp"
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_btn_secondary"
+                        android:background="@drawable/bg_btn_primary"
                         android:text="Close"
                         android:textAllCaps="false"
-                        android:textColor="#334155"
+                        android:textColor="#FFFFFF"
                         android:textSize="13sp"
                         android:textStyle="bold" />
 
+                    <!-- RIGHT BUTTON: Open Voco (Secondary white background, subtle border, dark text) -->
                     <Button
                         android:id="@+id/btn_open_app"
                         style="?android:attr/borderlessButtonStyle"
@@ -318,10 +326,10 @@
                         android:layout_height="44dp"
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_btn_primary"
+                        android:background="@drawable/bg_btn_secondary"
                         android:text="Open Voco"
                         android:textAllCaps="false"
-                        android:textColor="#FFFFFF"
+                        android:textColor="#334155"
                         android:textSize="13sp"
                         android:textStyle="bold" />
                 </LinearLayout>
