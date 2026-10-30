@@ -33,9 +33,12 @@ import {
   setupNotificationListeners,
   isNativeApp,
   scheduleNativeReminders,
+  syncWordsWithNativeScheduler,
   cancelAllNativeReminders,
   scheduleTestNotification,
-  getPendingNativeReminderCount,
+  getNativeReminderStatus,
+  checkExactAlarmPermission,
+  openExactAlarmSettings,
   ensureNotificationChannel,
 } from './services/notifications';
 import { Header } from './components/Header';
@@ -136,9 +139,25 @@ export function App() {
       // 3. Seed starter word if empty
       await seedInitialWordIfEmpty();
 
-      // 4. Initialize native notification channel if running as Android APK
+      // 4. Initialize native notification channel and sync state if running as Android APK
       if (isNativeApp()) {
         await ensureNotificationChannel();
+        try {
+          const nativeStatus = await getNativeReminderStatus();
+          if (nativeStatus && nativeStatus.active) {
+            persistRemindersActive(true);
+            setRemindersActiveState(true);
+            if (nativeStatus.intervalMinutes) {
+              setReminderInterval(nativeStatus.intervalMinutes);
+              setSavedReminderInterval(nativeStatus.intervalMinutes);
+            }
+            if (nativeStatus.nextTrigger && nativeStatus.nextTrigger > Date.now()) {
+              setNextReminderTimestamp(nativeStatus.nextTrigger);
+            }
+          }
+        } catch (e) {
+          console.warn('[Voco] Native status check note:', e);
+        }
       }
 
       // 5. Load from IndexedDB
@@ -149,16 +168,9 @@ export function App() {
         lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
 
-      // Check if reminders are active on native platform and top up scheduled notifications if needed
-      if (isRemindersActive() && isNativeApp() && loaded.length > 0) {
-        try {
-          const pendingCount = await getPendingNativeReminderCount();
-          if (pendingCount < 10) {
-            await scheduleNativeReminders(loaded, getSavedReminderInterval());
-          }
-        } catch (e) {
-          console.warn('[Voco] Top up native reminders check failed:', e);
-        }
+      // Keep native word bank in sync with saved words
+      if (isNativeApp() && loaded.length > 0) {
+        syncWordsWithNativeScheduler(loaded).catch(() => {});
       }
 
       // 6. Check if quiz was requested via URL query param
@@ -248,20 +260,13 @@ export function App() {
         setSecondsRemaining(reminderInterval * 60);
 
         // On browser web: trigger browser notification via JS timer
-        // On native Android: notifications are scheduled natively with Android AlarmManager
+        // On native Android: Android native AlarmManager delivers reminders independently
         if (!isNativeApp()) {
           const words = wordsRef.current;
           const nextWord = pickNextReminderWord(words);
           if (nextWord) {
             dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
           }
-        } else {
-          // On native Android: check if pending notifications are running low, top up
-          getPendingNativeReminderCount().then((count) => {
-            if (count < 4 && wordsRef.current.length > 0) {
-              scheduleNativeReminders(wordsRef.current, reminderInterval);
-            }
-          });
         }
       }
     }, 1000);
@@ -313,9 +318,9 @@ export function App() {
       // 3. Update React state by re-reading directly from IndexedDB (source of truth)
       const updatedList = await refreshWords();
 
-      // Top-up or refresh scheduled native reminders with new word included
-      if (isRemindersActive() && isNativeApp() && updatedList.length > 0) {
-        scheduleNativeReminders(updatedList, reminderInterval).catch(() => {});
+      // Synchronize native Android word bank so background reminders rotate new word
+      if (isNativeApp() && updatedList.length > 0) {
+        syncWordsWithNativeScheduler(updatedList).catch(() => {});
       }
 
       setStorageStatus({
@@ -360,9 +365,9 @@ export function App() {
       const saved = await saveManualWord({ word: inputWord, meaning, example });
       const updatedList = await refreshWords();
 
-      // Top-up or refresh scheduled native reminders with new word included
-      if (isRemindersActive() && isNativeApp() && updatedList.length > 0) {
-        scheduleNativeReminders(updatedList, reminderInterval).catch(() => {});
+      // Synchronize native Android word bank so background reminders rotate new word
+      if (isNativeApp() && updatedList.length > 0) {
+        syncWordsWithNativeScheduler(updatedList).catch(() => {});
       }
 
       setStorageStatus({
@@ -470,10 +475,10 @@ export function App() {
       await deleteWord(id);
       const remainingWords = await refreshWords();
 
-      // If reminders active, refresh scheduled notifications or stop if no words left
+      // If reminders active, refresh native words bank or cancel if no words left
       if (isRemindersActive() && isNativeApp()) {
         if (remainingWords.length > 0) {
-          scheduleNativeReminders(remainingWords, reminderInterval).catch(() => {});
+          syncWordsWithNativeScheduler(remainingWords).catch(() => {});
         } else {
           cancelAllNativeReminders().catch(() => {});
           persistRemindersActive(false);
@@ -522,16 +527,30 @@ export function App() {
     setPermission(currentPerm);
 
     if (granted) {
+      if (isNativeApp()) {
+        try {
+          const exactStatus = await checkExactAlarmPermission();
+          if (exactStatus === 'prompt') {
+            const wantsToEnable = confirm(
+              'For practice reminders to arrive at exact minute intervals in the background, Android requires the "Alarms & reminders" permission.\n\nWould you like to open Settings to allow it for Voco now?'
+            );
+            if (wantsToEnable) {
+              await openExactAlarmSettings();
+            }
+          }
+        } catch (e) {
+          console.warn('[Voco] Exact alarm check note:', e);
+        }
+
+        await scheduleNativeReminders(wordsRef.current, reminderInterval);
+      }
+
       persistRemindersActive(true);
       setRemindersActiveState(true);
 
       const target = Date.now() + reminderInterval * 60 * 1000;
       setNextReminderTimestamp(target);
       setSecondsRemaining(reminderInterval * 60);
-
-      if (isNativeApp()) {
-        await scheduleNativeReminders(wordsRef.current, reminderInterval);
-      }
     } else {
       if (isNativeApp()) {
         alert(

@@ -1,6 +1,32 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { VocabularyWord } from '../types';
+
+// ─────────────────────────────────────────────
+// Native Android Plugin Bridge Interface
+// ─────────────────────────────────────────────
+interface VocoSchedulerPlugin {
+  startReminders(options: { intervalMinutes: number; words: string }): Promise<{
+    success: boolean;
+    nextTrigger: number;
+    exactAlarmGranted: boolean;
+  }>;
+  stopReminders(): Promise<{ success: boolean }>;
+  updateWords(options: { words: string }): Promise<{ success: boolean }>;
+  sendTestNotification(options: { wordId: string; word: string }): Promise<{ success: boolean }>;
+  getReminderStatus(): Promise<{
+    active: boolean;
+    intervalMinutes: number;
+    nextTrigger: number;
+    exactAlarmGranted: boolean;
+  }>;
+  checkExactAlarmPermission(): Promise<{ exact_alarm_granted: boolean }>;
+  openExactAlarmSettings(): Promise<{ opened: boolean }>;
+  openBatterySettings(): Promise<{ opened: boolean }>;
+  openAppSettings(): Promise<{ opened: boolean }>;
+}
+
+export const VocoScheduler = registerPlugin<VocoSchedulerPlugin>('VocoNotificationScheduler');
 
 // ─────────────────────────────────────────────
 // Storage keys
@@ -9,25 +35,13 @@ const REMINDERS_KEY = 'my_vocab_reminders_enabled';
 const LAST_WORD_KEY = 'my_vocab_last_notified_id';
 const INTERVAL_KEY = 'my_vocab_reminder_interval_mins';
 const NEXT_TRIGGER_KEY = 'my_vocab_next_reminder_timestamp';
-const SCHEDULED_IDS_KEY = 'voco_scheduled_notif_ids';
 
 // Default interval in milliseconds (5 minutes)
 export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 
-// High-importance notification channel ID for Android 8.0+
 export const REMINDER_CHANNEL_ID = 'voco_reminders';
 
-// Notification ID ranges
-const NOTIF_ID_BASE = 100000;
-const NOTIF_ID_RANGE = 100000;
-const TEST_NOTIF_ID = 99999;
-
-// Maximum future slots to pre-schedule with Android AlarmManager
-// 50 slots at 5 min = 250 minutes (over 4 hours of continuous reminders without opening app)
-const MAX_SCHEDULED_NOTIFICATIONS = 50;
-
 let nativeListenersInitialized = false;
-let channelInitialized = false;
 
 // ─────────────────────────────────────────────
 // LocalStorage helpers
@@ -56,7 +70,7 @@ function removeStorageItem(key: string): void {
 // ─────────────────────────────────────────────
 
 /**
- * Returns true when running as a native Android or iOS Capacitor app.
+ * Returns true when running as a native Android or iOS application.
  */
 export function isNativeApp(): boolean {
   if (typeof window === 'undefined') return false;
@@ -64,29 +78,22 @@ export function isNativeApp(): boolean {
 }
 
 // ─────────────────────────────────────────────
-// Channel management (Android 8.0+)
+// Channel management
 // ─────────────────────────────────────────────
 
-/**
- * Ensures the high-priority "voco_reminders" notification channel exists on Android.
- * Sets IMPORTANCE_HIGH (4) and lockscreen VISIBILITY_PUBLIC (1) with vibration enabled
- * so reminders show heads-up banners, sound, and show on the lock screen even when app is killed.
- */
 export async function ensureNotificationChannel(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || channelInitialized) return;
-
+  if (!Capacitor.isNativePlatform()) return;
   try {
     await LocalNotifications.createChannel({
       id: REMINDER_CHANNEL_ID,
       name: 'Voco Practice Reminders',
-      description: 'Scheduled reminders to practice your saved vocabulary words',
-      importance: 4, // Android NotificationManager.IMPORTANCE_HIGH (heads-up banner + sound + vibration)
-      visibility: 1, // NotificationCompat.VISIBILITY_PUBLIC (full content on lock screen)
+      description: 'Scheduled practice prompts for saved vocabulary words',
+      importance: 4, // NotificationManager.IMPORTANCE_HIGH
+      visibility: 1, // NotificationCompat.VISIBILITY_PUBLIC
       vibration: true,
       lights: true,
       lightColor: '#4F46E5',
     });
-    channelInitialized = true;
   } catch (err) {
     console.warn('[Voco] Channel setup note:', err);
   }
@@ -211,22 +218,34 @@ export async function requestNotificationPermission(): Promise<boolean> {
 export async function checkExactAlarmPermission(): Promise<'granted' | 'prompt' | 'unsupported'> {
   if (!Capacitor.isNativePlatform()) return 'unsupported';
   try {
-    const res = await (LocalNotifications as any).checkExactNotificationSetting();
-    return res?.exact_alarm === 'granted' ? 'granted' : 'prompt';
+    const res = await VocoScheduler.checkExactAlarmPermission();
+    return res?.exact_alarm_granted ? 'granted' : 'prompt';
   } catch {
     return 'unsupported';
   }
 }
 
 /**
- * Opens Android system settings for Alarms & Reminders if user needs to allow exact alarms.
+ * Opens Android system settings for Alarms & Reminders.
  */
 export async function openExactAlarmSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    await (LocalNotifications as any).changeExactNotificationSetting();
+    await VocoScheduler.openExactAlarmSettings();
   } catch (err) {
     console.warn('[Voco] Could not open alarm settings:', err);
+  }
+}
+
+/**
+ * Opens Android battery optimization / app details settings.
+ */
+export async function openBatterySettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await VocoScheduler.openBatterySettings();
+  } catch (err) {
+    console.warn('[Voco] Could not open battery settings:', err);
   }
 }
 
@@ -261,142 +280,79 @@ export function pickNextReminderWord(words: VocabularyWord[]): VocabularyWord | 
 }
 
 // ─────────────────────────────────────────────
-// Scheduled notification ID store
-// ─────────────────────────────────────────────
-
-function saveScheduledIds(ids: number[]): void {
-  setStorageItem(SCHEDULED_IDS_KEY, JSON.stringify(ids));
-}
-
-function loadScheduledIds(): number[] {
-  const raw = getStorageItem(SCHEDULED_IDS_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-// ─────────────────────────────────────────────
-// Core: Native pre-scheduling
+// Core: Native Android Alarm Scheduling
 // ─────────────────────────────────────────────
 
 /**
- * Pre-schedules up to `count` future reminder alarms directly with Android's native AlarmManager.
- * Features:
- * 1. Dedicated high-importance channel ("voco_reminders") for heads-up display and lock-screen visibility.
- * 2. Proper monochrome vector icon ("ic_stat_voco") for clean status bar rendering.
- * 3. allowWhileIdle: true to fire during Doze mode and screen-off.
- * 4. foreground: true to raise priority to PRIORITY_HIGH for heads-up pop-down banner.
- * 5. Bakes distinct vocabulary words into each slot round-robin so each notification is unique.
+ * Starts native Android alarm reminders.
+ * The Android operating system's AlarmManager handles subsequent reminders perpetually.
  */
 export async function scheduleNativeReminders(
   words: VocabularyWord[],
-  intervalMinutes: number,
-  count: number = MAX_SCHEDULED_NOTIFICATIONS
+  intervalMinutes: number
 ): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   if (!words || words.length === 0) return false;
 
   try {
-    // Ensure high-priority channel exists before scheduling
     await ensureNotificationChannel();
 
-    // Clean up any previously scheduled alarms first to prevent duplicates
-    await cancelAllNativeReminders();
+    const wordsData = JSON.stringify(
+      words.map((w) => ({
+        id: w.id,
+        word: w.word,
+        meaning: w.meaning,
+      }))
+    );
 
-    // Check if exact alarms are allowed
-    let canExact = true;
-    try {
-      const exactStatus = await checkExactAlarmPermission();
-      canExact = exactStatus === 'granted' || exactStatus === 'unsupported';
-    } catch {
-      canExact = false;
+    const result = await VocoScheduler.startReminders({
+      intervalMinutes,
+      words: wordsData,
+    });
+
+    if (result && result.nextTrigger) {
+      setNextReminderTimestamp(result.nextTrigger);
+    } else {
+      setNextReminderTimestamp(Date.now() + intervalMinutes * 60 * 1000);
     }
 
-    const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
-    const notifications: any[] = [];
-    const ids: number[] = [];
-    const now = Date.now();
-
-    // Pick starting word
-    const lastId = getStorageItem(LAST_WORD_KEY);
-    const startCandidates = words.filter((w) => w.id !== lastId);
-    const startPool = startCandidates.length > 0 ? startCandidates : words;
-    let wordIndex = Math.floor(Math.random() * startPool.length);
-    const firstWord = startPool[wordIndex];
-    let globalIndex = words.findIndex((w) => w.id === firstWord.id);
-    if (globalIndex < 0) globalIndex = 0;
-
-    for (let i = 0; i < count; i++) {
-      const word = words[globalIndex % words.length];
-      const fireAt = new Date(now + (i + 1) * intervalMs);
-      const notifId = NOTIF_ID_BASE + (i % NOTIF_ID_RANGE);
-
-      notifications.push({
-        id: notifId,
-        title: 'Voco — Practice Time! 📚',
-        body: `What does ${word.word.toUpperCase()} mean?`,
-        extra: { wordId: word.id },
-        channelId: REMINDER_CHANNEL_ID,
-        smallIcon: 'ic_stat_voco',
-        iconColor: '#4F46E5',
-        foreground: true, // Elevates to PRIORITY_HIGH on Android for heads-up display
-        schedule: {
-          at: fireAt,
-          allowWhileIdle: true,
-        },
-        isExactNotification: canExact,
-        isExactMandatory: false,
-      });
-      ids.push(notifId);
-      globalIndex++;
-    }
-
-    // Set first trigger timestamp for visual countdown
-    const firstFireAt = now + intervalMs;
-    setNextReminderTimestamp(firstFireAt);
-
-    if (notifications.length > 0) {
-      setStorageItem(LAST_WORD_KEY, notifications[0].extra.wordId);
-    }
-
-    // Register all alarms with Android AlarmManager in one native batch call
-    await LocalNotifications.schedule({ notifications });
-    saveScheduledIds(ids);
-
-    console.log(`[Voco] Scheduled ${notifications.length} native background reminders (${intervalMinutes}m interval).`);
+    setRemindersActive(true);
+    console.log(`[Voco] Native AlarmManager reminders active every ${intervalMinutes} minutes.`);
     return true;
   } catch (err) {
-    console.error('[Voco] Failed to schedule native reminders:', err);
+    console.error('[Voco] Failed to start native reminders:', err);
     return false;
   }
 }
 
 /**
- * Cancels all scheduled reminder notifications in Android AlarmManager and storage.
- * Completely clears all pending alarms so reminders do not restart after reboot or reopening.
+ * Updates the native Android persisted word bank so subsequent reminders rotate new words.
+ */
+export async function syncWordsWithNativeScheduler(words: VocabularyWord[]): Promise<void> {
+  if (!Capacitor.isNativePlatform() || words.length === 0) return;
+  try {
+    const wordsData = JSON.stringify(
+      words.map((w) => ({
+        id: w.id,
+        word: w.word,
+        meaning: w.meaning,
+      }))
+    );
+    await VocoScheduler.updateWords({ words: wordsData });
+  } catch (err) {
+    console.warn('[Voco] syncWordsWithNativeScheduler note:', err);
+  }
+}
+
+/**
+ * Stops all reminders in Android AlarmManager and clears pending alarms.
  */
 export async function cancelAllNativeReminders(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
   try {
-    // 1. Cancel by stored ID list
-    const storedIds = loadScheduledIds();
-    if (storedIds.length > 0) {
-      await LocalNotifications.cancel({
-        notifications: storedIds.map((id) => ({ id })),
-      }).catch(() => {});
-    }
-
-    // 2. Also call native cancelAll() to purge any orphaned alarms in AlarmManager
-    if (typeof (LocalNotifications as any).cancelAll === 'function') {
-      await (LocalNotifications as any).cancelAll().catch(() => {});
-    }
-
-    saveScheduledIds([]);
+    await VocoScheduler.stopReminders();
+    setRemindersActive(false);
     setNextReminderTimestamp(null);
   } catch (err) {
     console.warn('[Voco] cancelAllNativeReminders error:', err);
@@ -404,60 +360,32 @@ export async function cancelAllNativeReminders(): Promise<void> {
 }
 
 /**
- * Returns count of pending scheduled reminders.
+ * Checks native Android reminder status.
  */
-export async function getPendingNativeReminderCount(): Promise<number> {
-  if (!Capacitor.isNativePlatform()) return 0;
+export async function getNativeReminderStatus(): Promise<{
+  active: boolean;
+  intervalMinutes: number;
+  nextTrigger: number;
+  exactAlarmGranted: boolean;
+} | null> {
+  if (!Capacitor.isNativePlatform()) return null;
   try {
-    const pending = await LocalNotifications.getPending();
-    return pending.notifications.filter(
-      (n) => n.id >= NOTIF_ID_BASE && n.id < NOTIF_ID_BASE + NOTIF_ID_RANGE
-    ).length;
+    return await VocoScheduler.getReminderStatus();
   } catch {
-    return 0;
+    return null;
   }
 }
 
 /**
- * Dispatches an immediate test notification using native AlarmManager (fires in ~1.5s).
- * Displays full notification with sound, vibration, and heads-up banner.
+ * Immediately delivers one test notification through Android native NotificationManager.
  */
 export async function scheduleTestNotification(word: VocabularyWord): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
     await ensureNotificationChannel();
-
-    // Cancel any previous test notification
-    await LocalNotifications.cancel({ notifications: [{ id: TEST_NOTIF_ID }] }).catch(() => {});
-
-    // Check exact alarm support
-    let canExact = true;
-    try {
-      const exactStatus = await checkExactAlarmPermission();
-      canExact = exactStatus === 'granted' || exactStatus === 'unsupported';
-    } catch {
-      canExact = false;
-    }
-
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: TEST_NOTIF_ID,
-          title: 'Voco — Test Reminder 📚',
-          body: `What does ${word.word.toUpperCase()} mean?`,
-          extra: { wordId: word.id },
-          channelId: REMINDER_CHANNEL_ID,
-          smallIcon: 'ic_stat_voco',
-          iconColor: '#4F46E5',
-          foreground: true,
-          schedule: {
-            at: new Date(Date.now() + 1500),
-            allowWhileIdle: true,
-          },
-          isExactNotification: canExact,
-          isExactMandatory: false,
-        },
-      ],
+    await VocoScheduler.sendTestNotification({
+      wordId: word.id,
+      word: word.word,
     });
     return true;
   } catch (err) {
@@ -474,46 +402,16 @@ export async function dispatchWordNotification(
   word: VocabularyWord,
   onOpenQuiz?: (word: VocabularyWord) => void
 ): Promise<boolean> {
-  const title = 'Voco — Practice Time!';
-  const body = `What does ${word.word.toUpperCase()} mean?`;
-
-  // Native: dispatch via LocalNotifications
   if (Capacitor.isNativePlatform()) {
-    try {
-      const granted = await requestNotificationPermission();
-      if (!granted) return false;
-
-      await ensureNotificationChannel();
-      const notifId = Math.floor(Math.random() * 900000) + 100000;
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title,
-            body,
-            extra: { wordId: word.id },
-            channelId: REMINDER_CHANNEL_ID,
-            smallIcon: 'ic_stat_voco',
-            iconColor: '#4F46E5',
-            foreground: true,
-            schedule: { at: new Date(Date.now() + 250), allowWhileIdle: true },
-            isExactNotification: false,
-            isExactMandatory: false,
-          },
-        ],
-      });
-      return true;
-    } catch (err) {
-      console.error('[Capacitor] Failed to dispatch native notification:', err);
-      return false;
-    }
+    return scheduleTestNotification(word);
   }
 
-  // Web browser notification
   if (!isNotificationSupported() || Notification.permission !== 'granted') {
     return false;
   }
 
+  const title = 'Voco — Practice Time!';
+  const body = `What does ${word.word.toUpperCase()} mean?`;
   const url = `/?quiz=${encodeURIComponent(word.id)}`;
 
   try {
@@ -562,14 +460,13 @@ export function setupNotificationListeners(onOpenQuizForWordId: (wordId: string)
   if (Capacitor.isNativePlatform() && !nativeListenersInitialized) {
     nativeListenersInitialized = true;
     try {
-      LocalNotifications.addListener('localNotificationActionPerformed', (notificationAction) => {
-        const wordId = notificationAction.notification.extra?.wordId;
-        if (wordId) {
-          onOpenQuizForWordId(String(wordId));
+      (VocoScheduler as any).addListener('notificationOpened', (data: { wordId: string }) => {
+        if (data && data.wordId) {
+          onOpenQuizForWordId(String(data.wordId));
         }
       });
     } catch (err) {
-      console.warn('[Capacitor] Could not register notification listeners:', err);
+      console.warn('[Voco] Native notification listener note:', err);
     }
   }
 }

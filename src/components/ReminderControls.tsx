@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { Bell, BellOff, Send, Clock, Info, SlidersHorizontal, Settings } from 'lucide-react';
+import { Bell, BellOff, Send, Clock, Info, SlidersHorizontal, Settings, BatteryCharging } from 'lucide-react';
 import type { VocabularyWord } from '../types';
-import { formatCountdownSeconds, isNativeApp, openExactAlarmSettings } from '../services/notifications';
+import {
+  formatCountdownSeconds,
+  isNativeApp,
+  openExactAlarmSettings,
+  openBatterySettings,
+} from '../services/notifications';
 
 interface ReminderControlsProps {
   remindersActive: boolean;
@@ -222,11 +227,31 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
       {/* Platform info & battery guidance note */}
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-start space-x-2 text-[10px] text-slate-400 leading-relaxed">
         <Info className="w-3 h-3 text-slate-300 shrink-0 mt-0.5" />
-        <div>
+        <div className="w-full">
           {isNativeApp() ? (
-            <p>
-              <strong className="text-slate-500">Native Android Scheduling:</strong> Reminders use Android's native AlarmManager to deliver notifications independently of the app. For uninterrupted delivery after closing the app, ensure <span className="text-slate-600 font-medium">Battery usage</span> is set to <span className="text-slate-600 font-medium">Unrestricted</span> in your device's App info settings.
-            </p>
+            <div>
+              <p>
+                <strong className="text-slate-500">Native Android Scheduling:</strong> Reminders use Android's native AlarmManager to deliver notifications independently of the app. For uninterrupted background delivery after removing Voco from Recent Apps, ensure <span className="text-slate-600 font-medium">Battery usage</span> is set to <span className="text-slate-600 font-medium">Unrestricted</span>.
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => openBatterySettings()}
+                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-semibold transition-all border border-slate-200/80"
+                >
+                  <BatteryCharging className="w-3 h-3 text-emerald-600" />
+                  <span>Battery Usage (Set to Unrestricted)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openExactAlarmSettings()}
+                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-semibold transition-all border border-slate-200/80"
+                >
+                  <Settings className="w-3 h-3 text-indigo-600" />
+                  <span>Alarms & Reminders Settings</span>
+                </button>
+              </div>
+            </div>
           ) : (
             <p>
               <strong className="text-slate-500">Browser note:</strong> Web browsers throttle background timers when tabs are inactive. The installed Android APK uses native Android alarms.

@@ -34,6 +34,26 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Native Voco Background Reminder Alarm Receiver -->
+        <receiver
+            android:name=".VocoAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.harsh.voco.PRACTICE_REMINDER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Native Voco Reboot Receiver to restore scheduled reminders -->
+        <receiver
+            android:name=".VocoBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->
