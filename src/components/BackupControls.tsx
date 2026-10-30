@@ -81,24 +81,24 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-4 sm:p-5 mb-4 sm:mb-5 transition-colors">
+    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-4 sm:p-5 mb-4 sm:mb-5 transition-colors">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center space-x-1.5">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
               Backup &amp; Restore
             </h3>
             <button
               type="button"
               onClick={() => setShowInfo(!showInfo)}
-              className="text-slate-400 hover:text-indigo-600 dark:text-zinc-500 dark:hover:text-indigo-400 transition-colors p-0.5 rounded"
+              className="text-slate-400 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-[#6554F5] transition-colors p-0.5 rounded"
               title="Important storage and backup info"
               aria-label="Storage info"
             >
               <Info className="w-3.5 h-3.5" />
             </button>
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
+          <p className="text-[11px] text-slate-400 dark:text-zinc-400 mt-0.5">
             Export vocabulary to JSON or restore on any device.
           </p>
         </div>
@@ -108,10 +108,10 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
             type="button"
             onClick={handleExport}
             disabled={totalWords === 0}
-            className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 active:bg-slate-100 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
+            className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-850 active:bg-slate-100 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
             title={totalWords === 0 ? 'Save at least one word to export' : 'Download JSON backup'}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5 text-indigo-500 dark:text-indigo-400" />
+            <Download className="w-3.5 h-3.5 mr-1.5 text-[#6554F5]" />
             <span>Export</span>
           </button>
 
@@ -126,7 +126,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-900 active:bg-slate-100 dark:active:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
+            className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-850 active:bg-slate-100 dark:active:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
             title="Import and validate a JSON backup file"
           >
             <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-zinc-400" />
@@ -137,7 +137,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
 
       {/* Info panel */}
       {showInfo && (
-        <div className="mt-3 p-3.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 rounded-xl text-[11px] text-slate-600 dark:text-zinc-300 leading-relaxed">
+        <div className="mt-3 p-3.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-[11px] text-slate-600 dark:text-zinc-300 leading-relaxed">
           <p className="font-semibold text-slate-700 dark:text-zinc-100 mb-1">About your vocabulary data</p>
           <p>
             Your words are stored locally in your browser's IndexedDB. They survive page refreshes, browser closure, and restarts.
@@ -147,7 +147,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={() => setShowInfo(false)}
-            className="mt-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold"
+            className="mt-2 text-[#6554F5] dark:text-[#6554F5] hover:underline font-semibold"
           >
             Got it
           </button>

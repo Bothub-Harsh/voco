@@ -62,17 +62,17 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/80 dark:border-zinc-800/80 p-4 sm:p-5 mb-4 transition-colors">
+    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-4 sm:p-5 mb-4 transition-colors">
       {/* Section Header */}
       <div className="flex items-center space-x-2 mb-3">
-        <div className="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-500" />
-        <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+        <div className="w-2 h-2 rounded-full bg-[#6554F5]" />
+        <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
           Add a New Word
         </h2>
       </div>
 
       {/* Compact Segmented Mode Switcher */}
-      <div className="bg-slate-100/90 dark:bg-zinc-900 p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-200/50 dark:border-zinc-800">
+      <div className="bg-slate-100/90 dark:bg-zinc-900 p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-200/80 dark:border-zinc-800">
         <button
           type="button"
           onClick={() => {
@@ -82,11 +82,11 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           disabled={isLoading}
           className={`py-1.5 px-3 rounded-lg flex items-center justify-center space-x-1.5 text-xs font-semibold transition-all ${
             entryMode === 'ai'
-              ? 'bg-white dark:bg-zinc-800 text-indigo-700 dark:text-indigo-400 shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
+              ? 'bg-white dark:bg-zinc-850 text-indigo-700 dark:text-[#8172F8] shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
               : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          <Sparkles className="w-3.5 h-3.5 text-[#6554F5] shrink-0" />
           <span className="truncate">AI Generate Meaning</span>
         </button>
 
@@ -99,11 +99,11 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           disabled={isLoading}
           className={`py-1.5 px-3 rounded-lg flex items-center justify-center space-x-1.5 text-xs font-semibold transition-all ${
             entryMode === 'manual'
-              ? 'bg-white dark:bg-zinc-800 text-indigo-700 dark:text-indigo-400 shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
+              ? 'bg-white dark:bg-zinc-850 text-indigo-700 dark:text-[#8172F8] shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
               : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
           }`}
         >
-          <PenTool className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+          <PenTool className="w-3.5 h-3.5 text-[#6554F5] shrink-0" />
           <span className="truncate">Write My Own Meaning</span>
         </button>
       </div>
@@ -126,7 +126,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
                 onChange={(e) => setInputWord(e.target.value)}
                 placeholder="e.g. Compassion, Serene..."
                 disabled={isLoading}
-                className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50"
+                className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50"
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck="false"
@@ -134,7 +134,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               <button
                 type="submit"
                 disabled={isLoading || !inputWord.trim()}
-                className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold text-xs sm:text-sm transition-all shadow-xs shrink-0 min-w-[120px]"
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold text-xs sm:text-sm transition-all shadow-xs shrink-0 min-w-[120px]"
               >
                 {isLoading ? (
                   <>

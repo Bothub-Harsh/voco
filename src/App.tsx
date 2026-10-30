@@ -595,7 +595,6 @@ export function App() {
               intervalMinutes={reminderInterval}
               onChangeInterval={handleChangeInterval}
               secondsRemaining={secondsRemaining}
-              onOpenSettings={() => setActiveTab('settings')}
             />
           </div>
         )}
@@ -618,8 +617,6 @@ export function App() {
         {/* ━━━ TAB 3: SETTINGS ━━━ */}
         {activeTab === 'settings' && (
           <SettingsTab
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
             totalWords={words.length}
             onRefreshWords={refreshWords}
             onStatusChange={handleBackupStatusChange}

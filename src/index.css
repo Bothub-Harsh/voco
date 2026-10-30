@@ -33,7 +33,7 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* True Black Dark Mode */
+  /* True Black Dark Mode with Refined Visible Borders */
   html.dark {
     color-scheme: dark;
     background-color: #000000;
@@ -41,10 +41,10 @@
 
   html.dark body {
     background-color: #000000;
-    color: #F8FAFC;
+    color: #F5F6FA;
   }
 
-  /* Refined scrollbar for desktop */
+  /* Refined scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
   }
@@ -60,10 +60,10 @@
   }
 
   html.dark ::-webkit-scrollbar-thumb {
-    background: #27272A;
+    background: #303541;
   }
   html.dark ::-webkit-scrollbar-thumb:hover {
-    background: #3F3F46;
+    background: #424958;
   }
 }
 
@@ -86,11 +86,6 @@
 
 .safe-pb-page {
   padding-bottom: max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem));
-}
-
-/* Bottom nav safe area: ensures the nav bar clears gesture bars */
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Smooth tab transitions */
