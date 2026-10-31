@@ -209,21 +209,6 @@ export const WordList: React.FC<WordListProps> = ({
 
                 {/* Action buttons */}
                 <div className="flex items-center space-x-1 shrink-0">
-                  {ttsAvailable && (
-                    <button
-                      type="button"
-                      onClick={() => handleSpeak(item)}
-                      className={`p-1.5 border rounded-lg transition-colors ${
-                        speakingId === item.id
-                          ? 'text-[#6554F5] bg-indigo-50 dark:bg-[#6554F5]/15 border-indigo-200 dark:border-[#6554F5]/30 animate-pulse'
-                          : 'text-slate-400 dark:text-zinc-400 hover:text-[#6554F5] dark:hover:text-[#6554F5] hover:bg-indigo-50 dark:hover:bg-zinc-900 border-transparent hover:border-slate-200 dark:hover:border-zinc-800'
-                      }`}
-                      title={speakingId === item.id ? 'Speaking…' : `Pronounce "${item.word}"`}
-                      aria-label={`Pronounce ${item.word}`}
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                   <button
                     type="button"
                     onClick={() => onOpenQuiz(item)}

@@ -645,6 +645,8 @@ export function App() {
             remindersActive={remindersActive}
             onStartReminders={handleStartReminders}
             onStopReminders={handleStopReminders}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
           />
         )}
       </main>
