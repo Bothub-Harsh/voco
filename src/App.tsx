@@ -51,6 +51,15 @@ import { SettingsTab } from './components/SettingsTab';
 import { initTheme, toggleTheme, type Theme } from './services/theme';
 import { CheckCircle2 } from 'lucide-react';
 
+const TABS: TabId[] = ['add', 'saved', 'settings'];
+
+/** Minimum horizontal swipe distance in px to trigger navigation */
+const SWIPE_THRESHOLD_PX = 48;
+/** Max angle from horizontal (in degrees) to count as a swipe, not a scroll */
+const SWIPE_MAX_ANGLE_DEG = 28;
+/** Max duration in ms for a swipe gesture to be recognised */
+const SWIPE_MAX_MS = 700;
+
 export function App() {
   // ─── UI State ───
   const [theme, setTheme] = useState<Theme>(() => initTheme());
@@ -235,6 +244,23 @@ export function App() {
       window.removeEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
     };
   }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
+
+  // ─── Mobile Viewport Lock (Prevent window-level scroll offsets on soft keyboard show/hide) ───
+  useEffect(() => {
+    const resetScroll = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+    window.addEventListener('scroll', resetScroll, { passive: true });
+    window.addEventListener('blur', resetScroll, true);
+    window.addEventListener('resize', resetScroll);
+    return () => {
+      window.removeEventListener('scroll', resetScroll);
+      window.removeEventListener('blur', resetScroll, true);
+      window.removeEventListener('resize', resetScroll);
+    };
+  }, []);
 
   // ─── Reminder Timer (Runs continuously across all tabs) ───
   useEffect(() => {
@@ -598,69 +624,153 @@ export function App() {
     setTheme(next);
   };
 
-  // ─── Swipe Navigation between 3 Main Tabs ───
-  const TABS: TabId[] = ['add', 'saved', 'settings'];
-  const touchStartRef = useRef<{ x: number; y: number; time: number; valid: boolean }>({
-    x: 0,
-    y: 0,
-    time: 0,
-    valid: false,
+  // ─── Swipe Navigation ───
+  // Keep active tab index in a ref for touch handlers (avoids stale closures)
+  const activeTabIndexRef = useRef<number>(TABS.indexOf('add'));
+  const slideViewportRef = useRef<HTMLDivElement>(null);
+
+  // Sync ref when state changes (e.g., bottom nav tap)
+  useEffect(() => {
+    activeTabIndexRef.current = TABS.indexOf(activeTab);
+    // Snap to position immediately (no animation) when tab changes via bottom nav / external
+    const vp = slideViewportRef.current;
+    if (!vp) return;
+    vp.classList.remove('is-animating');
+    vp.style.transform = `translateX(-${activeTabIndexRef.current * (100 / 3)}%)`;
+  }, [activeTab]);
+
+  const swipeState = useRef<{
+    startX: number;
+    startY: number;
+    startTime: number;
+    active: boolean;
+    directionLocked: boolean;
+    isHorizontal: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    active: false,
+    directionLocked: false,
+    isHorizontal: false,
   });
 
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const navigateToTab = useCallback((index: number, animate = true) => {
+    const clamped = Math.max(0, Math.min(TABS.length - 1, index));
+    const vp = slideViewportRef.current;
+    if (vp) {
+      if (animate) {
+        vp.classList.add('is-animating');
+        const onEnd = () => {
+          vp.classList.remove('is-animating');
+          vp.removeEventListener('transitionend', onEnd);
+        };
+        vp.addEventListener('transitionend', onEnd);
+      } else {
+        vp.classList.remove('is-animating');
+      }
+      vp.style.transform = `translateX(-${clamped * (100 / 3)}%)`;
+    }
+    activeTabIndexRef.current = clamped;
+    setActiveTab(TABS[clamped]);
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Only track single-finger touches
     if (e.touches.length > 1) {
-      touchStartRef.current.valid = false;
+      swipeState.current.active = false;
       return;
     }
     const target = e.target as HTMLElement | null;
-    // Do not interfere with text selection, typing, buttons, sliders, or modal dialogs
-    if (target?.closest('input, textarea, select, button, [role="dialog"], .no-swipe')) {
-      touchStartRef.current.valid = false;
+    // Never intercept touches on interactive or scrollable elements
+    if (target?.closest(
+      'input, textarea, select, button, [role="dialog"], [role="slider"], .no-swipe, a'
+    )) {
+      swipeState.current.active = false;
       return;
     }
-    touchStartRef.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-      time: Date.now(),
-      valid: true,
+    swipeState.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      startTime: Date.now(),
+      active: true,
+      directionLocked: false,
+      isHorizontal: false,
     };
-  };
+  }, []);
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current.valid) return;
-    touchStartRef.current.valid = false;
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const s = swipeState.current;
+    if (!s.active) return;
+
+    const dx = e.touches[0].clientX - s.startX;
+    const dy = e.touches[0].clientY - s.startY;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+
+    // Lock direction after 8px of movement to decide swipe vs scroll
+    if (!s.directionLocked && (adx > 8 || ady > 8)) {
+      s.directionLocked = true;
+      const angleRad = Math.atan2(ady, adx);
+      const angleDeg = (angleRad * 180) / Math.PI;
+      s.isHorizontal = angleDeg < SWIPE_MAX_ANGLE_DEG;
+    }
+
+    if (!s.directionLocked || !s.isHorizontal) return;
+
+    // Prevent vertical page scroll while tracking horizontal swipe
+    e.preventDefault();
+
+    // Drag the viewport with the finger (rubber-banded at edges)
+    const vp = slideViewportRef.current;
+    if (!vp) return;
+    const currentIndex = activeTabIndexRef.current;
+    const baseX = -(currentIndex * (100 / 3));
+    // Convert pixel drag to percentage of total viewport (300% wide)
+    const pct = (dx / window.innerWidth) * (100 / 3) * (100 / 100);
+    const clampedPct = Math.max(
+      -(((TABS.length - 1) * (100 / 3)) - baseX - (100 / 3)),
+      Math.min(-(baseX - (100 / 3)), pct)
+    );
+    vp.classList.remove('is-animating');
+    vp.style.transform = `translateX(${baseX + clampedPct}%)`;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const s = swipeState.current;
+    if (!s.active || !s.directionLocked || !s.isHorizontal) {
+      swipeState.current.active = false;
+      return;
+    }
+    swipeState.current.active = false;
 
     if (e.changedTouches.length === 0) return;
-    const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStartRef.current.x;
-    const deltaY = touch.clientY - touchStartRef.current.y;
-    const deltaTime = Date.now() - touchStartRef.current.time;
+    const dx = e.changedTouches[0].clientX - s.startX;
+    const dy = e.changedTouches[0].clientY - s.startY;
+    const elapsed = Date.now() - s.startTime;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
 
-    // Must be a deliberate horizontal swipe:
-    // 1. Horizontal distance >= 50px
-    // 2. Horizontal movement at least 1.4x larger than vertical movement (not scrolling vertically)
-    // 3. Completed within 800ms
-    if (Math.abs(deltaX) < 50 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4 || deltaTime > 800) {
+    // Confirm it's still mostly horizontal and within time limit
+    if (adx < SWIPE_THRESHOLD_PX || ady > adx * Math.tan((SWIPE_MAX_ANGLE_DEG * Math.PI) / 180) || elapsed > SWIPE_MAX_MS) {
+      // Snap back to current
+      navigateToTab(activeTabIndexRef.current, true);
       return;
     }
 
-    const currentIndex = TABS.indexOf(activeTab);
-
-    if (deltaX < 0) {
-      // Swiped Left (finger moved right to left) -> Go to next tab
-      if (currentIndex < TABS.length - 1) {
-        setActiveTab(TABS[currentIndex + 1]);
-      }
+    const currentIndex = activeTabIndexRef.current;
+    if (dx < 0 && currentIndex < TABS.length - 1) {
+      navigateToTab(currentIndex + 1);
+    } else if (dx > 0 && currentIndex > 0) {
+      navigateToTab(currentIndex - 1);
     } else {
-      // Swiped Right (finger moved left to right) -> Go to previous tab
-      if (currentIndex > 0) {
-        setActiveTab(TABS[currentIndex - 1]);
-      }
+      // Edge: snap back
+      navigateToTab(currentIndex, true);
     }
-  };
+  }, [navigateToTab]);
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200 overflow-x-hidden w-full relative">
+    <div className="h-full h-[100dvh] bg-[#F8FAFC] dark:bg-[#121318] flex flex-col font-sans text-slate-800 dark:text-[#F1F1F5] safe-left safe-right transition-colors duration-300 overflow-hidden w-full relative">
       <Header
         isOnline={isOnline}
         backendStatus={backendStatus}
@@ -669,84 +779,97 @@ export function App() {
         onToggleTheme={handleToggleTheme}
       />
 
-      <main
+      {/* ── Swipe Viewport Outer Container ── */}
+      <div
+        className="flex-1 min-h-0 w-full overflow-hidden relative"
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 touch-pan-y overflow-x-hidden"
       >
-        {/* ━━━ TAB 1: ADD WORDS ━━━ */}
-        {activeTab === 'add' && (
-          <div className="space-y-3">
-            {/* Small Clean Success Message */}
-            {successMessage && (
-              <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center space-x-2 shadow-xs transition-opacity">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>Word saved successfully!</span>
-              </div>
-            )}
+        {/* 300%-wide sliding strip containing the 3 panels */}
+        <div
+          ref={slideViewportRef}
+          className="slide-viewport h-full"
+          style={{ transform: `translateX(-${TABS.indexOf(activeTab) * (100 / 3)}%)` }}
+        >
+          {/* ━━━ PANEL 1: ADD WORDS ━━━ */}
+          <div className="slide-panel">
+            <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-6 sm:pb-8 space-y-3">
+              {/* Small Clean Success Message */}
+              {successMessage && (
+                <div className="px-3.5 py-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center space-x-2 shadow-xs transition-opacity">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Word saved successfully!</span>
+                </div>
+              )}
 
-            {/* Add Word Form */}
-            <AddWordForm
-              onAddWord={handleAddWord}
-              onAddManualWord={handleAddManualWord}
-              isLoading={isLoading}
-              error={errorMessage}
-              onRetry={handleRetry}
-              lastFailedWord={lastFailedWord}
-            />
+              {/* Add Word Form */}
+              <AddWordForm
+                onAddWord={handleAddWord}
+                onAddManualWord={handleAddManualWord}
+                isLoading={isLoading}
+                error={errorMessage}
+                onRetry={handleRetry}
+                lastFailedWord={lastFailedWord}
+              />
 
-            {/* Practice Reminders (Kept Simple) */}
-            <ReminderControls
-              remindersActive={remindersActive}
-              onStartReminders={handleStartReminders}
-              onStopReminders={handleStopReminders}
-              onTestNotification={handleTestNotification}
-              words={words}
-              intervalMinutes={reminderInterval}
-              onChangeInterval={handleChangeInterval}
-              secondsRemaining={secondsRemaining}
-            />
+              {/* Practice Reminders */}
+              <ReminderControls
+                remindersActive={remindersActive}
+                onStartReminders={handleStartReminders}
+                onStopReminders={handleStopReminders}
+                onTestNotification={handleTestNotification}
+                words={words}
+                intervalMinutes={reminderInterval}
+                onChangeInterval={handleChangeInterval}
+                secondsRemaining={secondsRemaining}
+              />
+            </div>
           </div>
-        )}
 
-        {/* ━━━ TAB 2: SAVED WORDS ━━━ */}
-        {activeTab === 'saved' && (
-          <WordList
-            words={words}
-            onOpenQuiz={(word) => openQuizForWord(word)}
-            onDeleteWord={handleDeleteWord}
-            onDeleteBatch={handleDeleteBatch}
-            onUpdateWord={handleUpdateWord}
-            onRefreshWord={handleRefreshWord}
-            refreshingWordId={refreshingWordId}
-            refreshError={refreshError}
-            onClearRefreshError={handleClearRefreshError}
-            highlightedWordId={highlightedWordId}
-          />
-        )}
+          {/* ━━━ PANEL 2: SAVED WORDS ━━━ */}
+          <div className="slide-panel">
+            <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-6 sm:pb-8">
+              <WordList
+                words={words}
+                onOpenQuiz={(word) => openQuizForWord(word)}
+                onDeleteWord={handleDeleteWord}
+                onDeleteBatch={handleDeleteBatch}
+                onUpdateWord={handleUpdateWord}
+                onRefreshWord={handleRefreshWord}
+                refreshingWordId={refreshingWordId}
+                refreshError={refreshError}
+                onClearRefreshError={handleClearRefreshError}
+                highlightedWordId={highlightedWordId}
+              />
+            </div>
+          </div>
 
-        {/* ━━━ TAB 3: SETTINGS ━━━ */}
-        {activeTab === 'settings' && (
-          <SettingsTab
-            totalWords={words.length}
-            onRefreshWords={refreshWords}
-            onStatusChange={handleBackupStatusChange}
-            permission={permission}
-            onRequestPermission={handleRequestPermission}
-            isPersistent={isPersistent}
-            isOnline={isOnline}
-            backendStatus={backendStatus}
-            storageStatus={storageStatus}
-            reminderInterval={reminderInterval}
-            onChangeInterval={handleChangeInterval}
-            remindersActive={remindersActive}
-            onStartReminders={handleStartReminders}
-            onStopReminders={handleStopReminders}
-            theme={theme}
-            onToggleTheme={handleToggleTheme}
-          />
-        )}
-      </main>
+          {/* ━━━ PANEL 3: SETTINGS ━━━ */}
+          <div className="slide-panel">
+            <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-6 sm:pb-8">
+              <SettingsTab
+                totalWords={words.length}
+                onRefreshWords={refreshWords}
+                onStatusChange={handleBackupStatusChange}
+                permission={permission}
+                onRequestPermission={handleRequestPermission}
+                isPersistent={isPersistent}
+                isOnline={isOnline}
+                backendStatus={backendStatus}
+                storageStatus={storageStatus}
+                reminderInterval={reminderInterval}
+                onChangeInterval={handleChangeInterval}
+                remindersActive={remindersActive}
+                onStartReminders={handleStartReminders}
+                onStopReminders={handleStopReminders}
+                theme={theme}
+                onToggleTheme={handleToggleTheme}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Quiz Modal Overlay */}
       {activeQuizSession && (
@@ -760,7 +883,7 @@ export function App() {
       {/* Fixed Bottom Navigation */}
       <BottomNav
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => navigateToTab(TABS.indexOf(tab))}
         savedWordsCount={words.length}
       />
     </div>

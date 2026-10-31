@@ -21,37 +21,38 @@ export default {
           800: '#372AB0',
           900: '#2E2290',
         },
-        // Refined zinc mapping for dark mode:
-        // 950 = Card background (#111318)
-        // 900 = Secondary surface / inner containers (#191C23)
-        // 850 = Dividers (#292E38)
-        // 800 = Visible borders (#303541)
-        // 700 = Hover border / secondary border (#424958)
-        // 400 = Secondary text (#AAB2C0)
-        // 100 = Primary dark text (#F5F6FA)
+        // Soft Charcoal Dark Mode palette:
+        // 950 = Card background (#1B1D25)
+        // 900 = Secondary surface / inner containers (#222530)
+        // 850 = Dividers (#2A2E3C)
+        // 800 = Visible borders (#30333E)
+        // 700 = Hover border (#3C4050)
+        // 500 = Muted text (#A5A8B5)
+        // 400 = Secondary text (#8B8E9C)
+        // 100 = Primary dark text (#F1F1F5)
         zinc: {
           50: '#FAFAFD',
-          100: '#F5F6FA',
-          200: '#E2E6EE',
-          300: '#CCD2DE',
-          400: '#AAB2C0',
-          500: '#7E889B',
-          600: '#586174',
-          700: '#424958',
-          800: '#303541',
-          850: '#292E38',
-          900: '#191C23',
-          950: '#111318',
+          100: '#F1F1F5',
+          200: '#E2E4EC',
+          300: '#C8CADB',
+          400: '#8B8E9C',
+          500: '#A5A8B5',
+          600: '#6B6E80',
+          700: '#3C4050',
+          800: '#30333E',
+          850: '#2A2E3C',
+          900: '#222530',
+          950: '#1B1D25',
         },
         dark: {
-          bg: '#000000',
-          card: '#111318',
-          surface: '#191C23',
-          border: '#303541',
-          divider: '#292E38',
-          text: '#F5F6FA',
-          muted: '#AAB2C0',
-          accent: '#6554F5',
+          bg: '#121318',
+          card: '#1B1D25',
+          surface: '#222530',
+          border: '#30333E',
+          divider: '#2A2E3C',
+          text: '#F1F1F5',
+          muted: '#A5A8B5',
+          accent: '#8875F5',
           success: '#28C995',
         },
       },

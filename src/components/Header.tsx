@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
 }) => {
   return (
-    <header className="sticky top-0 z-40 w-full shrink-0 bg-white dark:bg-black/95 border-b border-slate-200/90 dark:border-zinc-800 shadow-xs safe-top transition-colors backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full shrink-0 bg-white dark:bg-[#1B1D25]/95 border-b border-slate-200/90 dark:border-[#30333E] shadow-xs safe-top transition-colors backdrop-blur-md">
       <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
         {/* Left: Logo + Title */}
         <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onToggleTheme}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-amber-400 bg-slate-100/80 hover:bg-slate-200/80 dark:bg-zinc-900 dark:hover:bg-zinc-850 border border-slate-200/80 dark:border-zinc-800 transition-all focus:outline-none focus:ring-2 focus:ring-[#6554F5]/40"
+            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-[#A5A8B5] dark:hover:text-amber-400 bg-slate-100/80 hover:bg-slate-200/80 dark:bg-[#222530] dark:hover:bg-[#2A2E3C] border border-slate-200/80 dark:border-[#30333E] transition-all focus:outline-none focus:ring-2 focus:ring-[#8875F5]/40"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             aria-label="Toggle dark mode"
           >

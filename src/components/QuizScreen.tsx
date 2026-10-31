@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, CheckCircle2, XCircle, RotateCcw, Volume2, Sparkles, BookOpen } from 'lucide-react';
 import type { ActiveQuizSession } from '../types';
 import { speak, isTtsAvailable } from '../services/tts';
+import { FormattedMeaning } from './FormattedMeaning';
 
 interface QuizScreenProps {
   quiz: ActiveQuizSession;
@@ -152,7 +153,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
                   {letter}
                 </span>
                 <span className="text-xs sm:text-sm font-medium flex-1 text-left leading-relaxed">
-                  {option}
+                  <FormattedMeaning text={option} />
                 </span>
 
                 {hasSubmitted && isThisOptionCorrect && (
@@ -185,13 +186,14 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#28C995]" />
                   <span>Brilliant! That&apos;s correct.</span>
                 </div>
-                <p className="text-xs text-emerald-800/90 dark:text-emerald-300 leading-relaxed">
-                  {quiz.meaning}
-                </p>
+                <div className="text-xs text-emerald-800/90 dark:text-emerald-300 leading-relaxed">
+                  <FormattedMeaning text={quiz.meaning} />
+                </div>
                 {quiz.hindiMeaning && (
-                  <p className="text-xs text-emerald-700/80 dark:text-emerald-400 leading-relaxed mt-1.5 font-medium">
-                    🇮🇳 {quiz.hindiMeaning}
-                  </p>
+                  <div className="text-xs text-emerald-700/80 dark:text-emerald-400 leading-relaxed mt-1.5 font-medium flex items-start gap-1">
+                    <span>🇮🇳</span>
+                    <FormattedMeaning text={quiz.hindiMeaning} />
+                  </div>
                 )}
               </div>
             ) : (
@@ -204,40 +206,27 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
                 </div>
 
                 {/* Correct answer body */}
-                <div className="bg-white dark:bg-zinc-900 px-3.5 py-3 space-y-2.5">
+                <div className="bg-white dark:bg-[#1B1D25] px-3.5 py-3 space-y-2.5">
                   {/* Correct Answer heading + meaning */}
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400 mb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1">
                       Correct Answer
                     </p>
-                    <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 leading-relaxed">
-                      {quiz.meaning}
-                    </p>
-                  </div>
-
-                  {/* Simple explanation */}
-                  {quiz.meaning && (
-                    <div className="bg-indigo-50/60 dark:bg-[#6554F5]/10 rounded-lg px-3 py-2 border border-indigo-100 dark:border-[#6554F5]/20">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#6554F5] dark:text-[#8172F8] mb-1">
-                        Simple Explanation
-                      </p>
-                      <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed">
-                        <strong className="text-slate-900 dark:text-zinc-100 capitalize">{quiz.word}</strong> means{' '}
-                        {quiz.meaning.charAt(0).toLowerCase() + quiz.meaning.slice(1)}
-                        {quiz.meaning.endsWith('.') ? '' : '.'}
-                      </p>
+                    <div className="text-sm font-semibold text-slate-800 dark:text-[#F1F1F5] leading-relaxed">
+                      <FormattedMeaning text={quiz.meaning} />
                     </div>
-                  )}
+                  </div>
 
                   {/* Hindi meaning */}
                   {quiz.hindiMeaning && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400 mb-1">
+                    <div className="pt-2 border-t border-slate-100 dark:border-[#30333E]">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1">
                         Hindi Meaning
                       </p>
-                      <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">
-                        🇮🇳 {quiz.hindiMeaning}
-                      </p>
+                      <div className="text-sm text-slate-600 dark:text-[#A5A8B5] leading-relaxed flex items-start gap-1">
+                        <span>🇮🇳</span>
+                        <FormattedMeaning text={quiz.hindiMeaning} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -246,18 +235,18 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
 
             {/* Example sentence */}
             {quiz.example && (
-              <div className="bg-slate-50/90 dark:bg-zinc-900 rounded-xl p-3 sm:p-3.5 border border-slate-200/80 dark:border-zinc-800">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400 mb-1 flex items-center gap-1">
-                  <BookOpen className="w-3 h-3 text-[#6554F5]" />
+              <div className="bg-slate-50/90 dark:bg-[#1B1D25] rounded-xl p-3 sm:p-3.5 border border-slate-200/80 dark:border-[#30333E]">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1 flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-[#8875F5]" />
                   <span>Example in context</span>
                 </p>
-                <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 italic leading-relaxed">
-                  &ldquo;{quiz.example}&rdquo;
-                </p>
+                <div className="text-xs sm:text-sm text-slate-700 dark:text-[#F1F1F5] italic leading-relaxed">
+                  &ldquo;<FormattedMeaning text={quiz.example} />&rdquo;
+                </div>
                 {quiz.hindiExample && !isCorrect && (
-                  <p className="text-xs text-slate-500 dark:text-zinc-400 italic leading-relaxed mt-1.5">
-                    &ldquo;{quiz.hindiExample}&rdquo;
-                  </p>
+                  <div className="text-xs text-slate-500 dark:text-[#A5A8B5] italic leading-relaxed mt-1.5">
+                    &ldquo;<FormattedMeaning text={quiz.hindiExample} />&rdquo;
+                  </div>
                 )}
               </div>
             )}

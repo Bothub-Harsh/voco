@@ -47,7 +47,7 @@ export function applyTheme(theme: Theme): void {
       metaThemeColor.setAttribute('name', 'theme-color');
       document.head.appendChild(metaThemeColor);
     }
-    metaThemeColor.setAttribute('content', theme === 'dark' ? '#000000' : '#FFFFFF');
+    metaThemeColor.setAttribute('content', theme === 'dark' ? '#121318' : '#FFFFFF');
   } catch {
     // Ignore if DOM manipulation restricted
   }

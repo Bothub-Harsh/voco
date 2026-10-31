@@ -43,7 +43,24 @@ public class VocoAlarmScheduler {
     public static final String CHANNEL_ID = "voco_reminders";
     public static final String CHANNEL_NAME = "Voco Practice Reminders";
     public static final int ALARM_REQUEST_CODE = 44401;
+    /** @deprecated Use getNextNotificationId() to generate unique per-reminder IDs */
+    @Deprecated
     public static final int NOTIFICATION_ID = 44402;
+    private static final String KEY_NEXT_NOTIF_ID = "next_notification_id";
+    private static final int NOTIF_ID_BASE = 50000;
+    private static final int NOTIF_ID_MAX  = 99999;
+
+    /**
+     * Returns a unique notification ID each call, persisted across restarts.
+     * Cycles through [50000, 99999] so it stays safely within positive int range.
+     */
+    public static int getNextNotificationId(Context context) {
+        SharedPreferences prefs = getPrefs(context);
+        int current = prefs.getInt(KEY_NEXT_NOTIF_ID, NOTIF_ID_BASE);
+        int next = (current >= NOTIF_ID_MAX) ? NOTIF_ID_BASE : current + 1;
+        prefs.edit().putInt(KEY_NEXT_NOTIF_ID, next).apply();
+        return current;
+    }
 
     public static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -173,8 +190,14 @@ public class VocoAlarmScheduler {
 
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) {
+            // Cancel only Voco reminder notifications (range 50000–99999) when reminders are explicitly stopped.
+            // This intentionally avoids cancelAll() so that other app notifications are not affected.
+            int currentId = getPrefs(context).getInt(KEY_NEXT_NOTIF_ID, NOTIF_ID_BASE);
+            for (int id = NOTIF_ID_BASE; id < currentId; id++) {
+                nm.cancel(id);
+            }
+            // Also cancel the legacy fixed ID in case it's still present from old installs
             nm.cancel(NOTIFICATION_ID);
-            nm.cancelAll();
         }
 
         // Invalidate generation to -1L so any in-flight intent is immediately dropped
@@ -207,6 +230,9 @@ public class VocoAlarmScheduler {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
+        // Generate a unique notification ID so each reminder stays visible in the notification drawer
+        int notifId = getNextNotificationId(context);
+
         // PendingIntent targeting the fast native VocoQuizDialogActivity popup!
         Intent quizIntent = new Intent(context, VocoQuizDialogActivity.class);
         quizIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -226,12 +252,15 @@ public class VocoAlarmScheduler {
             quizIntent.putStringArrayListExtra(VocoQuizDialogActivity.EXTRA_OPTIONS, new ArrayList<>(options));
         }
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_CORRECT_INDEX, correctIndex);
+        // Pass unique notification ID so the activity can cancel only this notification on tap
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_NOTIFICATION_ID, notifId);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent pi = PendingIntent.getActivity(context, (int) System.currentTimeMillis(), quizIntent, flags);
+        // Use notifId as PendingIntent request code to guarantee each notification has a distinct PendingIntent
+        PendingIntent pi = PendingIntent.getActivity(context, notifId, quizIntent, flags);
 
         String upperWord = (wordText != null && !wordText.isEmpty()) ? wordText.toUpperCase() : "VOCABULARY";
 
@@ -247,8 +276,8 @@ public class VocoAlarmScheduler {
             .setColor(Color.parseColor("#4F46E5"))
             .setContentIntent(pi);
 
-        nm.notify(NOTIFICATION_ID, builder.build());
-        Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (targets native quiz popup)");
+        nm.notify(notifId, builder.build());
+        Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (notifId=" + notifId + ", targets native quiz popup)");
     }
 
     public static void showNotification(

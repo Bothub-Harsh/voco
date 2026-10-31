@@ -31,6 +31,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     public static final String EXTRA_CORRECT_INDEX = "com.harsh.voco.EXTRA_CORRECT_INDEX";
     public static final String EXTRA_HINDI_MEANING = "com.harsh.voco.EXTRA_HINDI_MEANING";
     public static final String EXTRA_HINDI_EXAMPLE = "com.harsh.voco.EXTRA_HINDI_EXAMPLE";
+    public static final String EXTRA_NOTIFICATION_ID = "com.harsh.voco.EXTRA_NOTIFICATION_ID";
 
     public static final String PREFS_QUIZ_STATS = "voco_quiz_stats";
     public static final String KEY_TOTAL_ANSWERED = "total_answered";
@@ -48,6 +49,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private List<String> options = new ArrayList<>();
     private int correctIndex = 0;
     private boolean hasAnswered = false;
+    private int notificationId = -1;
 
     private LinearLayout[] optionLayouts = new LinearLayout[4];
     private TextView[] optionBadges = new TextView[4];
@@ -69,10 +71,11 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
         getWindow().setBackgroundDrawableResource(android.R.color.transparent);
 
-        // Cancel notification since the user has tapped it and opened the quiz
+        // Cancel ONLY the specific notification the user tapped; leave all others intact
+        notificationId = getIntent().getIntExtra(EXTRA_NOTIFICATION_ID, -1);
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) {
-            nm.cancel(VocoAlarmScheduler.NOTIFICATION_ID);
+        if (nm != null && notificationId != -1) {
+            nm.cancel(notificationId);
         }
 
         // Handle Android system back gesture/button cleanly
@@ -106,6 +109,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             exampleSentence = intent.getStringExtra(EXTRA_EXAMPLE);
             hindiMeaning = intent.getStringExtra(EXTRA_HINDI_MEANING);
             hindiExample = intent.getStringExtra(EXTRA_HINDI_EXAMPLE);
+            notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
             ArrayList<String> extraOpts = intent.getStringArrayListExtra(EXTRA_OPTIONS);
             if (extraOpts != null && extraOpts.size() >= 4) {
                 options = extraOpts;

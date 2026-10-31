@@ -193,7 +193,7 @@ export const WordList: React.FC<WordListProps> = ({
   if (words.length === 0) {
     return (
       <div className="animate-fade-in-up">
-        <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-10 text-center transition-colors">
+        <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-10 text-center transition-colors">
           <div className="w-14 h-14 bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-100 dark:border-[#6554F5]/30">
             <Sparkles className="w-7 h-7" />
           </div>
@@ -214,7 +214,7 @@ export const WordList: React.FC<WordListProps> = ({
     <div className="space-y-3 animate-fade-in-up relative">
       {/* ━━ Sticky Top Selection Toolbar (pinned at TOP while scrolling) ━━ */}
       {isSelectionActive && (
-        <div className="sticky top-0 z-30 bg-[#F8FAFC]/95 dark:bg-black/95 backdrop-blur-md py-2.5 px-3.5 rounded-2xl border border-indigo-200/90 dark:border-[#6554F5]/40 shadow-sm flex items-center justify-between gap-2 animate-fade-in-up">
+        <div className="sticky top-0 z-30 bg-[#F8FAFC]/95 dark:bg-[#121318]/95 backdrop-blur-md py-2.5 px-3.5 rounded-2xl border border-indigo-200/90 dark:border-[#8875F5]/30 shadow-sm flex items-center justify-between gap-2 animate-fade-in-up">
           <div className="flex items-center space-x-2 min-w-0">
             <button
               type="button"
@@ -273,7 +273,7 @@ export const WordList: React.FC<WordListProps> = ({
           <button
             type="button"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-1.5 rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-850 transition-colors shadow-xs"
+            className="p-1.5 rounded-xl border border-slate-200/90 dark:border-[#30333E] bg-white dark:bg-[#222530] text-slate-500 dark:text-[#A5A8B5] hover:text-slate-800 dark:hover:text-[#F1F1F5] hover:bg-slate-50 dark:hover:bg-[#2A2E3C] transition-colors shadow-xs"
             title="Vocabulary options"
             aria-label="Vocabulary options"
           >
@@ -281,7 +281,7 @@ export const WordList: React.FC<WordListProps> = ({
           </button>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 rounded-xl shadow-elevated z-30 py-1 text-xs animate-fade-in-up">
+            <div className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-[#1B1D25] border border-slate-200/90 dark:border-[#30333E] rounded-xl shadow-elevated z-30 py-1 text-xs animate-fade-in-up">
               <button
                 type="button"
                 onClick={() => {
@@ -333,7 +333,7 @@ export const WordList: React.FC<WordListProps> = ({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search words or meanings..."
-          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50/50 dark:hover:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500"
+          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-[#30333E] bg-white dark:bg-[#222530] hover:bg-slate-50/50 dark:hover:bg-[#2A2E3C] focus:bg-white focus:dark:bg-[#222530] focus:outline-none focus:ring-2 focus:ring-[#8875F5]/25 focus:border-[#8875F5] dark:focus:border-[#8875F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80]"
           autoComplete="off"
           spellCheck="false"
         />
@@ -351,7 +351,7 @@ export const WordList: React.FC<WordListProps> = ({
 
       {/* No search results */}
       {filteredWords.length === 0 && searchQuery.trim() && (
-        <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-8 text-center transition-colors">
+        <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-8 text-center transition-colors">
           <Search className="w-8 h-8 text-slate-300 dark:text-zinc-500 mx-auto mb-2" />
           <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">
             No words matching &ldquo;{searchQuery}&rdquo;
@@ -386,14 +386,14 @@ export const WordList: React.FC<WordListProps> = ({
                   toggleSelect(item.id);
                 }
               }}
-              className={`bg-white dark:bg-zinc-950 border rounded-2xl p-4 sm:p-5 transition-all shadow-card hover:shadow-card-hover animate-fade-in-up relative ${
+              className={`bg-white dark:bg-[#1B1D25] border rounded-2xl p-4 sm:p-5 transition-all shadow-card hover:shadow-card-hover animate-fade-in-up relative ${
                 isSelectionActive ? 'cursor-pointer' : ''
               } ${
                 isSelected
-                  ? 'border-[#6554F5] dark:border-[#6554F5] ring-2 ring-[#6554F5]/30'
+                  ? 'border-[#8875F5] dark:border-[#8875F5] ring-2 ring-[#8875F5]/20'
                   : isHighlighted
-                    ? 'border-indigo-400 dark:border-[#6554F5] ring-2 ring-indigo-100 dark:ring-[#6554F5]/30'
-                    : 'border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700'
+                    ? 'border-indigo-400 dark:border-[#8875F5] ring-2 ring-indigo-100 dark:ring-[#8875F5]/15'
+                    : 'border-slate-200/90 dark:border-[#30333E] hover:border-slate-300 dark:hover:border-[#3C4050]'
               }`}
               style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
             >
@@ -500,22 +500,22 @@ export const WordList: React.FC<WordListProps> = ({
 
               {/* ━━ Bilingual Meanings & Example container (Vertical Stack) ━━ */}
               <div
-                className="mt-3 bg-slate-50/70 dark:bg-zinc-900 rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-zinc-800 space-y-3"
+                className="mt-3 bg-slate-50/70 dark:bg-[#222530] rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-[#30333E] space-y-3"
                 onClick={(e) => {
                   if (isSelectionActive) e.stopPropagation();
                 }}
               >
                 {/* 1. English Meaning with Selective Bold Keyword Emphasis */}
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
-                      Meaning (English)
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#A5A8B5] tracking-wider uppercase">
+                      MEANING (ENGLISH)
                     </span>
                     <button
                       type="button"
                       onClick={() => onRefreshWord(item)}
                       disabled={isRefreshing}
-                      className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-zinc-850 hover:bg-indigo-50 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#8875F5] dark:text-[#8875F5] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-[#2A2E3C] hover:bg-indigo-50 dark:hover:bg-[#30333E] border border-slate-200 dark:border-[#30333E] px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Generate fresh English & Hindi definitions"
                     >
                       <RotateCw
@@ -524,31 +524,31 @@ export const WordList: React.FC<WordListProps> = ({
                       <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
                     </button>
                   </div>
-                  <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed">
+                  <p className="text-sm text-slate-700 dark:text-[#F1F1F5] leading-relaxed">
                     <FormattedMeaning text={item.meaning} />
                   </p>
                 </div>
 
                 {/* 2. Hindi Meaning (Vertically below English meaning) */}
                 {item.hindiMeaning ? (
-                  <div className="pt-2.5 border-t border-slate-200/80 dark:border-zinc-850">
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">
-                      अर्थ (Hindi)
+                  <div className="pt-2.5 border-t border-slate-200/80 dark:border-[#30333E]">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-[#A5A8B5] tracking-wider uppercase block mb-1">
+                      अर्थ (HINDI)
                     </span>
-                    <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-normal">
+                    <p className="text-sm text-slate-700 dark:text-[#F1F1F5] leading-relaxed font-normal">
                       <FormattedMeaning text={item.hindiMeaning} />
                     </p>
                   </div>
                 ) : (
-                  <div className="pt-2 border-t border-slate-200/80 dark:border-zinc-850 flex items-center justify-between">
-                    <span className="text-[10px] font-medium text-slate-400 dark:text-zinc-500 italic">
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-[#30333E] flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-slate-400 dark:text-[#6B6E80] italic">
                       No Hindi translation yet
                     </span>
                     <button
                       type="button"
                       onClick={() => onRefreshWord(item)}
                       disabled={isRefreshing}
-                      className="text-[10px] font-semibold text-[#6554F5] hover:underline"
+                      className="text-[10px] font-semibold text-[#8875F5] hover:underline"
                     >
                       Generate Hindi
                     </button>
@@ -556,11 +556,11 @@ export const WordList: React.FC<WordListProps> = ({
                 )}
 
                 {/* 3. English Example (Strictly English only, in normal italic text) */}
-                <div className="pt-2.5 border-t border-slate-200/80 dark:border-zinc-850">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">
-                    Example
+                <div className="pt-2.5 border-t border-slate-200/80 dark:border-[#30333E]">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A5A8B5] tracking-wider uppercase block mb-1">
+                    EXAMPLE
                   </span>
-                  <p className="text-sm text-slate-500 dark:text-zinc-400 italic leading-relaxed">
+                  <p className="text-sm text-slate-500 dark:text-[#A5A8B5] italic leading-relaxed">
                     &ldquo;{item.example}&rdquo;
                   </p>
                 </div>
@@ -608,7 +608,7 @@ export const WordList: React.FC<WordListProps> = ({
             aria-modal="true"
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-colors overflow-hidden"
           >
-            <div className="bg-white dark:bg-zinc-950 w-full max-w-sm rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-6 relative transition-colors text-center animate-fade-in-up">
+            <div className="bg-white dark:bg-[#1B1D25] w-full max-w-sm rounded-2xl shadow-elevated border border-slate-200/90 dark:border-[#30333E] p-6 relative transition-colors text-center animate-fade-in-up">
               <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3 border border-rose-200 dark:border-rose-900/40">
                 <AlertTriangle className="w-6 h-6" />
               </div>

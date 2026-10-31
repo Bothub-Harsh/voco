@@ -66,7 +66,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-4 sm:p-5 mb-4 transition-colors">
+    <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-4 sm:p-5 mb-4 transition-colors">
       {/* Section Header */}
       <div className="flex items-center space-x-2 mb-3">
         <div className="w-2 h-2 rounded-full bg-[#6554F5]" />
@@ -76,7 +76,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
       </div>
 
       {/* Compact Segmented Mode Switcher */}
-      <div className="bg-slate-100/90 dark:bg-zinc-900 p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-200/80 dark:border-zinc-800">
+      <div className="bg-slate-100/90 dark:bg-[#222530] p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-200/80 dark:border-[#30333E]">
         <button
           type="button"
           onClick={() => {

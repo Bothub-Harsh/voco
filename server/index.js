@@ -95,89 +95,77 @@ async function handleVocabularyGeneration(req, res) {
     const isRefreshing = Boolean(isRefresh || currentMeaning);
 
     const prompt = isRefreshing
-      ? `You are an expert, beginner-friendly English vocabulary tutor and professional quiz creator.
+      ? `You are an expert, beginner-friendly English vocabulary tutor explaining words naturally like ChatGPT in conversation.
 Target English word: "${cleanWord}"
 Previous explanation: "${currentMeaning || ''}"
 Previous example sentence: "${currentExample || ''}"
 
-Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, Hindi meaning, and balanced quiz options for "${cleanWord}".
+Goal: Provide a FRESH, alternative, ChatGPT-style explanation for "${cleanWord}".
 
 Requirements:
-1. Provide the English word with proper capitalization.
-2. English Meaning (meaning):
-   - Explain the word in simple, everyday English (like an easy-to-understand dictionary definition).
-   - Keep it concise and natural. Avoid long, overwhelming paragraphs.
-   - Highlight 2 to 4 important, meaningful phrases or keywords by wrapping them in Markdown bold (**phrase**).
-   - Do NOT bold entire sentences and do NOT bold the target word itself.
-   - Example format: "${cleanWord} means being able to **recover quickly**, **stay strong**, and **continue moving forward** after facing difficulties."
-3. Hindi Meaning (hindiMeaning):
-   - Provide an accurate, natural Hindi translation using commonly understood, easy Hindi (avoid archaic terms).
-   - Naturally highlight 2 to 3 important Hindi keywords or phrases in Markdown bold (**शब्द/वाक्यांश**).
-   - Example format: "मुश्किलों के बाद भी **जल्दी संभलना**, **मजबूत बने रहना** और आगे बढ़ते रहना।"
-4. Example Sentence (example):
-   - Provide ONE natural example sentence showing how the word is used in everyday English.
-   - Keep the example in normal plain text (do NOT include bold markdown here).
-5. Four Balanced Quiz Options (options):
-   - Exactly 4 multiple-choice definitions for what "${cleanWord}" means (array of 4 strings).
-   - Exactly one option must be the accurate meaning.
-   - Three options must be intelligent distractors in the same semantic theme.
-   - All 4 options must be in clean plain text (NO markdown bold asterisks), very similar in length (within 3-5 words), similar grammar, and distinct.
-6. Provide the correct answer index: 0, 1, 2, or 3.
+1. "word": The target English word with proper capitalization (e.g. "${cleanWord}").
+2. "meaning": Explain the word in ONE natural, complete, and easy-to-understand sentence using simple everyday English.
+   - Format: "**${cleanWord}** means [natural explanation with 2 to 4 key words or phrases in bold]."
+   - Example: "**Compelled** means being **forced or required** to do something because of a situation."
+   - Explain the complete meaning, not just synonyms.
+   - Bold the vocabulary word (**${cleanWord}**) and 2 to 4 important related words or phrases (**phrase**).
+   - Exactly ONE natural conversational sentence. Avoid long paragraphs, complicated vocabulary, or unnecessary explanations.
+3. "hindiMeaning": Give a simple, accurate, concise Hindi translation.
+   - Example: "मजबूर होना / विवश होना।"
+   - Use simple, natural everyday Hindi.
+4. "example": Give ONE short, realistic everyday English sentence showing how the word is used.
+   - Example: "He was compelled to leave because of the circumstances."
+   - Keep the example in clean plain text (no bold asterisks).
+5. "options": Exactly 4 distinct multiple-choice definitions for what "${cleanWord}" means (array of 4 plain text strings, no markdown asterisks). One correct meaning, three intelligent distractors.
+6. "correctIndex": Integer 0, 1, 2, or 3 pointing to the correct option.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "word": "${cleanWord}",
-  "meaning": "fresh simple definition with **2-4 key phrases** in bold",
-  "example": "one natural example sentence in plain text",
-  "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
-  "hindiExample": "हिंदी उदाहरण वाक्य",
+  "meaning": "**${cleanWord}** means being **forced or required** to do something because of a situation.",
+  "example": "He was compelled to leave because of the circumstances.",
+  "hindiMeaning": "मजबूर होना / विवश होना।",
   "options": [
-    "plain text option 1",
-    "plain text option 2",
-    "plain text option 3",
-    "plain text option 4"
+    "being forced or required to do something",
+    "feeling completely relaxed and calm",
+    "showing great hesitation or doubt",
+    "having a strong desire to learn"
   ],
-  "correctIndex": 1
+  "correctIndex": 0
 }`
-      : `You are an expert, beginner-friendly English vocabulary tutor and professional quiz creator.
+      : `You are an expert, beginner-friendly English vocabulary tutor explaining words naturally like ChatGPT in conversation.
 Target English word: "${cleanWord}"
 
 Requirements:
-1. Provide the English word with proper capitalization.
-2. English Meaning (meaning):
-   - Explain the word in simple, everyday English (like an easy-to-understand dictionary definition).
-   - Keep it concise and natural. Avoid long, overwhelming paragraphs.
-   - Highlight 2 to 4 important, meaningful phrases or keywords by wrapping them in Markdown bold (**phrase**).
-   - Do NOT bold entire sentences and do NOT bold the target word itself.
-   - Example format: "${cleanWord} means being able to **recover quickly**, **stay strong**, and **continue moving forward** after facing difficulties."
-3. Hindi Meaning (hindiMeaning):
-   - Provide an accurate, natural Hindi translation using commonly understood, easy Hindi (avoid archaic terms).
-   - Naturally highlight 2 to 3 important Hindi keywords or phrases in Markdown bold (**शब्द/वाक्यांश**).
-   - Example format: "मुश्किलों के बाद भी **जल्दी संभलना**, **मजबूत बने रहना** और आगे बढ़ते रहना।"
-4. Example Sentence (example):
-   - Provide ONE natural example sentence showing how the word is used in everyday English.
-   - Keep the example in normal plain text (do NOT include bold markdown here).
-5. Four Balanced Quiz Options (options):
-   - Exactly 4 multiple-choice definitions for what "${cleanWord}" means (array of 4 strings).
-   - Exactly one option must be the accurate meaning.
-   - Three options must be intelligent distractors in the same semantic theme.
-   - All 4 options must be in clean plain text (NO markdown bold asterisks), very similar in length (within 3-5 words), similar grammar, and distinct.
-6. Provide the correct answer index: 0, 1, 2, or 3.
+1. "word": The target English word with proper capitalization (e.g. "${cleanWord}").
+2. "meaning": Explain the word in ONE natural, complete, and easy-to-understand sentence using simple everyday English.
+   - Format: "**${cleanWord}** means [natural explanation with 2 to 4 key words or phrases in bold]."
+   - Example: "**Compelled** means being **forced or required** to do something because of a situation."
+   - Explain the complete meaning, not just synonyms.
+   - Bold the vocabulary word (**${cleanWord}**) and 2 to 4 important related words or phrases (**phrase**).
+   - Exactly ONE natural conversational sentence. Avoid long paragraphs, complicated vocabulary, or unnecessary explanations.
+3. "hindiMeaning": Give a simple, accurate, concise Hindi translation.
+   - Example: "मजबूर होना / विवश होना।"
+   - Use simple, natural everyday Hindi.
+4. "example": Give ONE short, realistic everyday English sentence showing how the word is used.
+   - Example: "He was compelled to leave because of the circumstances."
+   - Keep the example in clean plain text (no bold asterisks).
+5. "options": Exactly 4 distinct multiple-choice definitions for what "${cleanWord}" means (array of 4 plain text strings, no markdown asterisks). One correct meaning, three intelligent distractors.
+6. "correctIndex": Integer 0, 1, 2, or 3 pointing to the correct option.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "word": "${cleanWord}",
-  "meaning": "simple definition with **2-4 key phrases** in bold",
-  "example": "one natural example sentence in plain text",
-  "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
-  "hindiExample": "हिंदी उदाहरण वाक्य",
+  "meaning": "**${cleanWord}** means being **forced or required** to do something because of a situation.",
+  "example": "He was compelled to leave because of the circumstances.",
+  "hindiMeaning": "मजबूर होना / विवश होना।",
   "options": [
-    "plain text option 1",
-    "plain text option 2",
-    "plain text option 3",
-    "plain text option 4"
+    "being forced or required to do something",
+    "feeling completely relaxed and calm",
+    "showing great hesitation or doubt",
+    "having a strong desire to learn"
   ],
-  "correctIndex": 1
+  "correctIndex": 0
 }`;
 
     let lastError = null;
@@ -319,27 +307,32 @@ app.post('/api/vocabulary/generate-batch', async (req, res) => {
       });
     }
 
-    const prompt = `You are an expert English vocabulary tutor and professional quiz creator.
+    const prompt = `You are an expert English vocabulary tutor explaining words naturally like ChatGPT in conversation.
 Target words to define: ${JSON.stringify(cleanWords)}
 
 For EACH of the ${cleanWords.length} target words, generate a beginner-friendly definition entry:
 1. "word": The target English word with proper capitalization.
-2. "meaning": Simple, clear explanation in everyday English. Keep it concise. Wrap 2 to 4 key, meaningful phrases in Markdown bold (**phrase**). Do NOT bold the entire sentence or the word itself.
-3. "hindiMeaning": Accurate, natural Hindi translation with 2 to 3 key words wrapped in Markdown bold (**शब्द**).
-4. "example": ONE natural example sentence showing everyday use, in plain text (no bold).
-5. "options": Exactly 4 balanced, distinct multiple-choice options in plain text (NO bold asterisks), very similar in length (within 3-5 words). One correct meaning, three intelligent distractors.
-6. "correctIndex": integer 0, 1, 2, or 3 pointing to the correct option.
+2. "meaning": ONE natural, complete, and easy-to-understand sentence in simple everyday English.
+   Format: "**[Word]** means [natural explanation with 2 to 4 key words or phrases in bold]."
+   Example: "**Compelled** means being **forced or required** to do something because of a situation."
+   Bold the vocabulary word and 2 to 4 key words/phrases. Exactly ONE sentence. No long paragraphs.
+3. "hindiMeaning": Simple, accurate, concise Hindi translation.
+   Example: "मजबूर होना / विवश होना।"
+4. "example": ONE short, realistic everyday English sentence in clean plain text (no bold).
+   Example: "He was compelled to leave because of the circumstances."
+5. "options": Exactly 4 distinct multiple-choice definitions in plain text (no markdown asterisks). One correct meaning, three intelligent distractors.
+6. "correctIndex": Integer 0, 1, 2, or 3 pointing to the correct option.
 
 Respond ONLY with valid JSON matching this schema:
 {
   "items": [
     {
       "word": "${cleanWords[0]}",
-      "meaning": "simple definition with **2-4 key phrases** in bold",
-      "example": "one natural example sentence in plain text",
-      "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
+      "meaning": "**${cleanWords[0]}** means being **forced or required** to do something because of a situation.",
+      "example": "He was compelled to leave because of the circumstances.",
+      "hindiMeaning": "मजबूर होना / विवश होना।",
       "options": ["option 1", "option 2", "option 3", "option 4"],
-      "correctIndex": 1
+      "correctIndex": 0
     }
   ]
 }`;

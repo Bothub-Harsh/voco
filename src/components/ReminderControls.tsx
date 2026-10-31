@@ -44,7 +44,7 @@ export const ReminderControls: React.FC<ReminderControlsProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-950 rounded-2xl shadow-card border border-slate-200/90 dark:border-zinc-800 p-4 sm:p-5 transition-colors">
+    <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-4 sm:p-5 transition-colors">
       {/* ─── Top Header: Heading + Status + Actions ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Left: Heading & Status Badge */}

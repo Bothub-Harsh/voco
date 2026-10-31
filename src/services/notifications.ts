@@ -471,6 +471,10 @@ export async function dispatchWordNotification(
   const url = `/?quiz=${encodeURIComponent(word.id)}`;
 
   try {
+    // Use a unique timestamp-based tag so each reminder creates a NEW notification
+    // instead of replacing the previous one (same tag = replacement in browser notifications)
+    const uniqueTag = `vocab-reminder-${word.id}-${Date.now()}`;
+
     if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.ready.catch(() => null);
       if (registration && 'showNotification' in registration) {
@@ -478,7 +482,7 @@ export async function dispatchWordNotification(
           body,
           icon: '/icon.svg',
           badge: '/icon.svg',
-          tag: `vocab-reminder-${word.id}`,
+          tag: uniqueTag,
           data: { wordId: word.id, url },
         });
         return true;
@@ -488,7 +492,7 @@ export async function dispatchWordNotification(
     const notif = new Notification(title, {
       body,
       icon: '/icon.svg',
-      tag: `vocab-reminder-${word.id}`,
+      tag: uniqueTag,
     });
 
     notif.onclick = () => {

@@ -474,13 +474,13 @@ export async function seedInitialWordIfEmpty(): Promise<VocabularyWord | null> {
   if (words.length === 0) {
     const sample: WordQuizPayload = {
       word: 'Harsh',
-      meaning: 'Rough, unkind, or very severe.',
+      meaning: '**Harsh** means being **unpleasantly rough**, **cruel**, or **very severe** in tone or behavior.',
       example: 'The teacher was harsh with the students.',
-      hindiMeaning: 'कठोर, असभ्य या अत्यधिक गंभीर।',
+      hindiMeaning: 'कठोर / अप्रिय रूप से सख्त।',
       hindiExample: 'शिक्षक छात्रों के प्रति कठोर थे।',
       options: [
         'Kind and caring',
-        'Rough or unkind',
+        'unpleasantly rough, cruel, or very severe',
         'Very happy',
         'Tired and sleepy',
       ],

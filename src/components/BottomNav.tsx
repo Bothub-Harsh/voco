@@ -27,7 +27,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   savedWordsCount,
 }) => {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-lg border-t border-slate-200/90 dark:border-zinc-800 transition-colors safe-bottom">
+    <nav className="shrink-0 w-full z-30 bg-white/97 dark:bg-[#1B1D25]/97 backdrop-blur-lg border-t border-slate-200/90 dark:border-[#30333E] transition-colors safe-bottom">
       <div className="max-w-2xl mx-auto flex items-stretch">
         {tabs.map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;
@@ -38,8 +38,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               onClick={() => onTabChange(id)}
               className={`flex-1 flex flex-col items-center justify-center py-1.5 pt-2 gap-0.5 transition-all active:scale-95 ${
                 isActive
-                  ? 'text-[#6554F5] dark:text-[#6554F5]'
-                  : 'text-slate-400 dark:text-zinc-400 hover:dark:text-zinc-200'
+                  ? 'text-[#8875F5] dark:text-[#8875F5]'
+                  : 'text-slate-400 dark:text-[#6B6E80] hover:dark:text-[#A5A8B5]'
               }`}
               aria-label={label}
               aria-current={isActive ? 'page' : undefined}
@@ -47,15 +47,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               <div
                 className={`relative px-4 py-1 rounded-2xl transition-all duration-200 ${
                   isActive
-                    ? 'bg-indigo-50 dark:bg-[#6554F5]/15 border border-transparent dark:border-[#6554F5]/30'
+                    ? 'bg-indigo-50 dark:bg-[#8875F5]/15 border border-transparent dark:border-[#8875F5]/25'
                     : ''
                 }`}
               >
                 <Icon
                   className={`w-5 h-5 transition-colors ${
                     isActive
-                      ? 'text-[#6554F5] dark:text-[#6554F5]'
-                      : 'text-slate-400 dark:text-zinc-400'
+                      ? 'text-[#8875F5] dark:text-[#8875F5]'
+                      : 'text-slate-400 dark:text-[#6B6E80]'
                   }`}
                   strokeWidth={isActive ? 2.3 : 1.8}
                 />

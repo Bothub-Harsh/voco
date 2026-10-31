@@ -216,4 +216,109 @@ describe('Quiz Evaluation & Randomized Distractor Engine', () => {
     // In almost every trial, it should successfully shift away from previousIndex
     expect(positionShiftedCount).toBeGreaterThanOrEqual(25);
   });
+
+  it('selects 3 incorrect options directly from other saved words in the vocabulary list', () => {
+    const savedVocabulary: VocabularyWord[] = [
+      {
+        id: 'w-severe',
+        word: 'Severe',
+        wordLower: 'severe',
+        meaning: 'Very serious or intense.',
+        example: 'The storm caused severe damage.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 1,
+      },
+      {
+        id: 'w-compassion',
+        word: 'Compassion',
+        wordLower: 'compassion',
+        meaning: 'Caring about others and their suffering.',
+        example: 'She treated everyone with great compassion.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 2,
+      },
+      {
+        id: 'w-rigid',
+        word: 'Rigid',
+        wordLower: 'rigid',
+        meaning: 'Stiff and unwilling to change.',
+        example: 'The school had rigid rules.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 3,
+      },
+      {
+        id: 'w-privilege',
+        word: 'Privilege',
+        wordLower: 'privilege',
+        meaning: 'A special right or advantage.',
+        example: 'Education is a privilege.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 4,
+      },
+    ];
+
+    const target = savedVocabulary[0]; // Severe
+    const session = generateFreshQuizSession(target, savedVocabulary);
+
+    // 1. Correct option is the accurate meaning of current quiz word
+    expect(session.options[session.correctIndex]).toBe('Very serious or intense.');
+
+    // 2. Exactly 4 options, all distinct
+    expect(session.options).toHaveLength(4);
+    const unique = new Set(session.options);
+    expect(unique.size).toBe(4);
+
+    // 3. The 3 distractors MUST be the actual saved meanings of the other 3 words
+    const distractors = session.options.filter((_, idx) => idx !== session.correctIndex);
+    expect(distractors).toHaveLength(3);
+    expect(distractors).toContain('Caring about others and their suffering.');
+    expect(distractors).toContain('Stiff and unwilling to change.');
+    expect(distractors).toContain('A special right or advantage.');
+
+    // 4. Target word's meaning does not appear as a distractor
+    expect(distractors).not.toContain('Very serious or intense.');
+  });
+
+  it('handles fewer than 3 other saved words gracefully without duplicates', () => {
+    const savedVocabulary: VocabularyWord[] = [
+      {
+        id: 'w-solo',
+        word: 'Solo',
+        wordLower: 'solo',
+        meaning: 'Done by one person alone.',
+        example: 'He took a solo flight.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 1,
+      },
+      {
+        id: 'w-serene',
+        word: 'Serene',
+        wordLower: 'serene',
+        meaning: 'Calm, peaceful, and untroubled.',
+        example: 'The lake was serene.',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        dateAdded: 2,
+      },
+    ];
+
+    const target = savedVocabulary[0]; // Only 1 other word saved
+    const session = generateFreshQuizSession(target, savedVocabulary);
+
+    // 1. Has 4 distinct options
+    expect(session.options).toHaveLength(4);
+    const unique = new Set(session.options);
+    expect(unique.size).toBe(4);
+
+    // 2. Correct answer is accurate
+    expect(session.options[session.correctIndex]).toBe('Done by one person alone.');
+
+    // 3. The available other saved word's meaning is included
+    expect(session.options).toContain('Calm, peaceful, and untroubled.');
+  });
 });
