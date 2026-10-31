@@ -660,7 +660,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200">
+    <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200 overflow-x-hidden w-full relative">
       <Header
         isOnline={isOnline}
         backendStatus={backendStatus}
@@ -672,7 +672,7 @@ export function App() {
       <main
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 touch-pan-y"
+        className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 touch-pan-y overflow-x-hidden"
       >
         {/* ━━━ TAB 1: ADD WORDS ━━━ */}
         {activeTab === 'add' && (

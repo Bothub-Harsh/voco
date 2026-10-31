@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, AlertCircle } from 'lucide-react';
 import type { VocabularyWord } from '../types';
 
@@ -20,6 +21,15 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
   const [editedHindiExample, setEditedHindiExample] = useState(word.hindiExample || '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Prevent background scrolling while modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,9 +73,9 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 transition-colors">
-      <div className="bg-white dark:bg-zinc-950 w-full max-w-md rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-6 relative transition-colors">
+      <div className="bg-white dark:bg-zinc-950 w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-6 relative transition-colors">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-850 mb-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
@@ -174,6 +184,7 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

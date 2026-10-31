@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Trash2,
   HelpCircle,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { VocabularyWord } from '../types';
 import { EditWordModal } from './EditWordModal';
+import { FormattedMeaning } from './FormattedMeaning';
 import { speak, stopSpeech, isTtsAvailable } from '../services/tts';
 
 interface WordListProps {
@@ -51,6 +53,7 @@ export const WordList: React.FC<WordListProps> = ({
 
   // Multi-selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
@@ -72,6 +75,16 @@ export const WordList: React.FC<WordListProps> = ({
       document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, [isMenuOpen]);
+
+  // Lock body scrolling when delete confirmation modal is active
+  useEffect(() => {
+    if (!showDeleteConfirm) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [showDeleteConfirm]);
 
   const handleSpeak = useCallback(async (word: VocabularyWord) => {
     if (speakingId === word.id) {
@@ -116,6 +129,7 @@ export const WordList: React.FC<WordListProps> = ({
 
   // Selection handlers
   const toggleSelect = (id: string) => {
+    setIsSelectionMode(true);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -128,7 +142,8 @@ export const WordList: React.FC<WordListProps> = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedIds.size === filteredWords.length) {
+    setIsSelectionMode(true);
+    if (selectedIds.size === filteredWords.length && selectedIds.size > 0) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filteredWords.map((w) => w.id)));
@@ -138,6 +153,7 @@ export const WordList: React.FC<WordListProps> = ({
 
   const handleCancelSelection = () => {
     setSelectedIds(new Set());
+    setIsSelectionMode(false);
     setIsMenuOpen(false);
   };
 
@@ -165,6 +181,7 @@ export const WordList: React.FC<WordListProps> = ({
         }
       }
       setSelectedIds(new Set());
+      setIsSelectionMode(false);
       setShowDeleteConfirm(false);
     } catch (err) {
       alert('Failed to delete selected words: ' + (err instanceof Error ? err.message : String(err)));
@@ -191,10 +208,50 @@ export const WordList: React.FC<WordListProps> = ({
     );
   }
 
-  const isSelectionActive = selectedIds.size > 0;
+  const isSelectionActive = isSelectionMode || selectedIds.size > 0;
 
   return (
-    <div className="space-y-3 animate-fade-in-up">
+    <div className="space-y-3 animate-fade-in-up relative">
+      {/* ━━ Sticky Top Selection Toolbar (pinned at TOP while scrolling) ━━ */}
+      {isSelectionActive && (
+        <div className="sticky top-0 z-30 bg-[#F8FAFC]/95 dark:bg-black/95 backdrop-blur-md py-2.5 px-3.5 rounded-2xl border border-indigo-200/90 dark:border-[#6554F5]/40 shadow-sm flex items-center justify-between gap-2 animate-fade-in-up">
+          <div className="flex items-center space-x-2 min-w-0">
+            <button
+              type="button"
+              onClick={handleCancelSelection}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-850 transition-colors shrink-0"
+              title="Cancel selection"
+              aria-label="Cancel selection"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <span className="font-bold text-xs text-indigo-950 dark:text-zinc-100 truncate">
+              {selectedIds.size} {selectedIds.size === 1 ? 'word' : 'words'} selected
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="px-2.5 py-1 text-xs font-semibold text-[#6554F5] dark:text-[#8172F8] hover:bg-indigo-50 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              {selectedIds.size === filteredWords.length && selectedIds.size > 0 ? 'Deselect All' : 'Select All'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDeleteSelectedClick}
+              disabled={selectedIds.size === 0}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 text-white rounded-xl text-xs font-semibold shadow-xs transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Section header with count and Three-Dot Menu */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center space-x-2">
@@ -227,16 +284,26 @@ export const WordList: React.FC<WordListProps> = ({
             <div className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 rounded-xl shadow-elevated z-30 py-1 text-xs animate-fade-in-up">
               <button
                 type="button"
-                onClick={handleSelectAll}
+                onClick={() => {
+                  setIsSelectionMode(true);
+                  handleSelectAll();
+                }}
                 className="w-full text-left px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 flex items-center space-x-2 text-slate-700 dark:text-zinc-200 font-medium transition-colors"
               >
                 <CheckSquare className="w-3.5 h-3.5 text-[#6554F5] shrink-0" />
-                <span>{selectedIds.size === filteredWords.length ? 'Deselect All' : 'Select All'}</span>
+                <span>{selectedIds.size === filteredWords.length && selectedIds.size > 0 ? 'Deselect All' : 'Select All'}</span>
               </button>
 
               <button
                 type="button"
-                onClick={handleDeleteSelectedClick}
+                onClick={() => {
+                  if (!isSelectionMode) {
+                    setIsSelectionMode(true);
+                    setIsMenuOpen(false);
+                  } else {
+                    handleDeleteSelectedClick();
+                  }
+                }}
                 className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center space-x-2 text-rose-600 dark:text-rose-400 font-medium transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
@@ -257,41 +324,6 @@ export const WordList: React.FC<WordListProps> = ({
           )}
         </div>
       </div>
-
-      {/* Active Selection Banner */}
-      {isSelectionActive && (
-        <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-indigo-50/80 dark:bg-[#6554F5]/15 border border-indigo-200/80 dark:border-[#6554F5]/30 text-xs animate-fade-in-up">
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-indigo-900 dark:text-zinc-100">
-              {selectedIds.size} {selectedIds.size === 1 ? 'word' : 'words'} selected
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-[11px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline"
-            >
-              {selectedIds.size === filteredWords.length ? 'Deselect All' : 'Select All'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-[11px] shadow-xs transition-colors"
-            >
-              Delete ({selectedIds.size})
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelSelection}
-              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 transition-colors"
-              title="Cancel selection"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Search bar */}
       <div className="relative">
@@ -349,7 +381,14 @@ export const WordList: React.FC<WordListProps> = ({
           return (
             <div
               key={item.id}
+              onClick={() => {
+                if (isSelectionActive) {
+                  toggleSelect(item.id);
+                }
+              }}
               className={`bg-white dark:bg-zinc-950 border rounded-2xl p-4 sm:p-5 transition-all shadow-card hover:shadow-card-hover animate-fade-in-up relative ${
+                isSelectionActive ? 'cursor-pointer' : ''
+              } ${
                 isSelected
                   ? 'border-[#6554F5] dark:border-[#6554F5] ring-2 ring-[#6554F5]/30'
                   : isHighlighted
@@ -358,14 +397,17 @@ export const WordList: React.FC<WordListProps> = ({
               }`}
               style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
             >
-              {/* Top row: Checkbox (when selecting) + Word + Badges + Actions */}
+              {/* Top row: Checkbox + Word + Single Speaker + Badges + Actions */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center flex-wrap gap-2 min-w-0">
                   {/* Select Checkbox Indicator */}
                   {isSelectionActive && (
                     <button
                       type="button"
-                      onClick={() => toggleSelect(item.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelect(item.id);
+                      }}
                       className="p-0.5 text-slate-400 hover:text-[#6554F5] transition-colors shrink-0"
                       aria-label={isSelected ? `Deselect ${item.word}` : `Select ${item.word}`}
                     >
@@ -386,7 +428,10 @@ export const WordList: React.FC<WordListProps> = ({
                   {ttsAvailable && (
                     <button
                       type="button"
-                      onClick={() => handleSpeak(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSpeak(item);
+                      }}
                       className={`p-1 rounded-full transition-all ${
                         speakingId === item.id
                           ? 'text-[#6554F5] bg-indigo-50 dark:bg-[#6554F5]/15 animate-pulse'
@@ -416,7 +461,10 @@ export const WordList: React.FC<WordListProps> = ({
                 </div>
 
                 {/* Action buttons: Practice, Edit, Delete */}
-                <div className="flex items-center space-x-1 shrink-0">
+                <div
+                  className="flex items-center space-x-1 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button
                     type="button"
                     onClick={() => onOpenQuiz(item)}
@@ -451,8 +499,13 @@ export const WordList: React.FC<WordListProps> = ({
               </div>
 
               {/* ━━ Bilingual Meanings & Example container (Vertical Stack) ━━ */}
-              <div className="mt-3 bg-slate-50/70 dark:bg-zinc-900 rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-zinc-800 space-y-3">
-                {/* 1. English Meaning */}
+              <div
+                className="mt-3 bg-slate-50/70 dark:bg-zinc-900 rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-zinc-800 space-y-3"
+                onClick={(e) => {
+                  if (isSelectionActive) e.stopPropagation();
+                }}
+              >
+                {/* 1. English Meaning with Selective Bold Keyword Emphasis */}
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
@@ -472,7 +525,7 @@ export const WordList: React.FC<WordListProps> = ({
                     </button>
                   </div>
                   <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed">
-                    {item.meaning}
+                    <FormattedMeaning text={item.meaning} />
                   </p>
                 </div>
 
@@ -483,7 +536,7 @@ export const WordList: React.FC<WordListProps> = ({
                       अर्थ (Hindi)
                     </span>
                     <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed font-normal">
-                      {item.hindiMeaning}
+                      <FormattedMeaning text={item.hindiMeaning} />
                     </p>
                   </div>
                 ) : (
@@ -502,7 +555,7 @@ export const WordList: React.FC<WordListProps> = ({
                   </div>
                 )}
 
-                {/* 3. English Example (Strictly English only, below both meanings) */}
+                {/* 3. English Example (Strictly English only, in normal italic text) */}
                 <div className="pt-2.5 border-t border-slate-200/80 dark:border-zinc-850">
                   <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">
                     Example
@@ -547,40 +600,46 @@ export const WordList: React.FC<WordListProps> = ({
         />
       )}
 
-      {/* Delete Selected Confirmation Dialog */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 transition-colors">
-          <div className="bg-white dark:bg-zinc-950 w-full max-w-sm rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-6 relative transition-colors text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3 border border-rose-200 dark:border-rose-900/40">
-              <AlertTriangle className="w-6 h-6" />
+      {/* Delete Selected Confirmation Dialog — Fixed relative to mobile viewport via Portal */}
+      {showDeleteConfirm &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-colors overflow-hidden"
+          >
+            <div className="bg-white dark:bg-zinc-950 w-full max-w-sm rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-6 relative transition-colors text-center animate-fade-in-up">
+              <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3 border border-rose-200 dark:border-rose-900/40">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100 mb-1.5">
+                Delete Selected Words?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed mb-5">
+                Are you sure you want to delete <strong className="text-slate-800 dark:text-zinc-200">{selectedIds.size}</strong> saved {selectedIds.size === 1 ? 'word' : 'words'}? This action cannot be undone.
+              </p>
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={isDeletingBatch}
+                  className="flex-1 py-2.5 px-4 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBatchDelete}
+                  disabled={isDeletingBatch}
+                  className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs"
+                >
+                  {isDeletingBatch ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100 mb-1.5">
-              Delete Selected Words?
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed mb-5">
-              Are you sure you want to delete <strong className="text-slate-800 dark:text-zinc-200">{selectedIds.size}</strong> saved {selectedIds.size === 1 ? 'word' : 'words'}? This action is permanent and cannot be undone.
-            </p>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={isDeletingBatch}
-                className="flex-1 py-2.5 px-4 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmBatchDelete}
-                disabled={isDeletingBatch}
-                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs"
-              >
-                {isDeletingBatch ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

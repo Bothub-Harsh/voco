@@ -151,50 +151,72 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
 
 /**
  * Calls backend Groq proxy to generate word definition and quiz options.
+ * Includes automatic retry with backoff for transient rate limits (429) or temporary server delays.
  */
 export async function generateVocabularyFromAI(word: string): Promise<WordQuizPayload> {
   const cleanWord = validateInputWord(word);
   const base = getApiBaseUrl();
 
-  let response: Response;
-  try {
-    response = await fetch(`${base}/api/vocabulary/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ word: cleanWord }),
-    });
-  } catch (err) {
-    throw new Error(
-      'Unable to connect to vocabulary server. Please verify your internet connection. (If the server was asleep, please try again in a few moments.)'
-    );
+  const maxAttempts = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(`${base}/api/vocabulary/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ word: cleanWord }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok) {
+        return validateAiQuizResponse(data);
+      }
+
+      if (response.status === 401) {
+        throw new Error(
+          'Invalid Groq API key configured on the backend server. Please check GROQ_API_KEY in Render dashboard.'
+        );
+      }
+
+      if (response.status === 503) {
+        // Backend says key is missing or service starting
+        const msg = data?.error || 'AI service temporarily unavailable.';
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          continue;
+        }
+        throw new Error(msg);
+      }
+
+      if (response.status === 429) {
+        if (attempt < maxAttempts) {
+          // Exponential backoff for rate limits
+          await new Promise((r) => setTimeout(r, 1800 * attempt));
+          continue;
+        }
+        throw new Error('AI rate limit reached. Please wait a few moments and retry.');
+      }
+
+      const message = data?.error || `Request failed with HTTP ${response.status}`;
+      const details = data?.details ? ` (${data.details})` : '';
+      throw new Error(`${message}${details}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Don't retry on configuration/auth errors
+      if (lastError.message.includes('Invalid Groq API key') || lastError.message.includes('Please enter')) {
+        throw lastError;
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      }
+    }
   }
 
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    if (response.status === 503) {
-      throw new Error(
-        'Groq AI key is not configured on the Render backend server. Please set GROQ_API_KEY in Render dashboard environment variables.'
-      );
-    }
-    if (response.status === 401) {
-      throw new Error(
-        'Invalid Groq API key configured on the backend server. Please check GROQ_API_KEY in Render dashboard.'
-      );
-    }
-    if (response.status === 429) {
-      throw new Error(
-        'Groq AI rate limit reached. Please wait a few moments and click Retry.'
-      );
-    }
-    const message = data?.error || `Request failed with HTTP ${response.status}`;
-    const details = data?.details ? ` (${data.details})` : '';
-    throw new Error(`${message}${details}`);
-  }
-
-  return validateAiQuizResponse(data);
+  throw lastError || new Error(`Unable to generate definition for "${cleanWord}". Please check connection.`);
 }
 
 /**

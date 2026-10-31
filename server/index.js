@@ -14,23 +14,27 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 
-// Candidate models in fallback order
+// Active Groq candidate models in fallback order
 const CANDIDATE_MODELS = [
   DEFAULT_MODEL,
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'qwen/qwen3.8-27b',
   'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant'
-].filter((m, i, arr) => arr.indexOf(m) === i); // deduplicate
+  'llama-3.1-8b-instant',
+  'gemma2-9b-it',
+  'mixtral-8x7b-32768'
+].filter((m, i, arr) => arr.indexOf(m) === i && !m.startsWith('openai/') && !m.startsWith('qwen/'));
 
 function cleanJsonContent(str) {
   if (!str || typeof str !== 'string') return '';
   let s = str.trim();
   if (s.startsWith('```')) {
     s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  }
+  const firstBrace = s.indexOf('{');
+  const lastBrace = s.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    s = s.substring(firstBrace, lastBrace + 1);
   }
   return s.trim();
 }
@@ -94,42 +98,42 @@ Target English word: "${cleanWord}"
 Previous explanation: "${currentMeaning || ''}"
 Previous example sentence: "${currentExample || ''}"
 
-Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, Hindi meaning, Hindi example, and genuinely challenging multiple-choice quiz options for "${cleanWord}".
+Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, Hindi meaning, and balanced quiz options for "${cleanWord}".
 
 Requirements:
 1. Provide the English word with proper capitalization.
-2. Provide an accurate, clear explanation in simple English written like a dictionary definition (easy to understand for an English learner, grammatically correct, concise).
-3. Provide one natural, fresh example sentence showing how the word is used in everyday English.
-4. Provide an accurate, natural Hindi meaning (hindiMeaning) using commonly understood, easy Hindi (avoid overly obscure or archaic words).
-5. Provide an accurate, natural Hindi translation of the example sentence (hindiExample).
-6. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
-   - Exactly one option must be the accurate, correct meaning.
-   - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
-   - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
-     * All four options MUST have very similar length (within 3-5 words of each other), sentence structure, complexity, and detail.
-     * The correct answer MUST NOT be noticeably longer, more elaborate, or more descriptive than the distractors.
-     * Avoid obviously unrelated, silly, or trivial definitions.
-     * Distractors must be sufficiently plausible that a learner must truly know "${cleanWord}" to choose correctly.
-     * Example of balanced options for the word "Racial":
-       - "Relating to physical strength and body structure."
-       - "Relating to groups defined by shared ancestry or ethnic background." (Correct)
-       - "Relating to cultural traditions and social behaviour."
-       - "Relating to personal beliefs and individual identity."
-   - All four options must be distinct and mutually exclusive.
-7. Provide the correct answer index: 0, 1, 2, or 3.
+2. English Meaning (meaning):
+   - Explain the word in simple, everyday English (like an easy-to-understand dictionary definition).
+   - Keep it concise and natural. Avoid long, overwhelming paragraphs.
+   - Highlight 2 to 4 important, meaningful phrases or keywords by wrapping them in Markdown bold (**phrase**).
+   - Do NOT bold entire sentences and do NOT bold the target word itself.
+   - Example format: "${cleanWord} means being able to **recover quickly**, **stay strong**, and **continue moving forward** after facing difficulties."
+3. Hindi Meaning (hindiMeaning):
+   - Provide an accurate, natural Hindi translation using commonly understood, easy Hindi (avoid archaic terms).
+   - Naturally highlight 2 to 3 important Hindi keywords or phrases in Markdown bold (**शब्द/वाक्यांश**).
+   - Example format: "मुश्किलों के बाद भी **जल्दी संभलना**, **मजबूत बने रहना** और आगे बढ़ते रहना।"
+4. Example Sentence (example):
+   - Provide ONE natural example sentence showing how the word is used in everyday English.
+   - Keep the example in normal plain text (do NOT include bold markdown here).
+5. Four Balanced Quiz Options (options):
+   - Exactly 4 multiple-choice definitions for what "${cleanWord}" means (array of 4 strings).
+   - Exactly one option must be the accurate meaning.
+   - Three options must be intelligent distractors in the same semantic theme.
+   - All 4 options must be in clean plain text (NO markdown bold asterisks), very similar in length (within 3-5 words), similar grammar, and distinct.
+6. Provide the correct answer index: 0, 1, 2, or 3.
 
-Respond ONLY with a valid JSON object matching this exact schema:
+Respond ONLY with a valid JSON object matching this schema:
 {
   "word": "${cleanWord}",
-  "meaning": "fresh simple definition in clear everyday English",
-  "example": "fresh natural example sentence",
-  "hindiMeaning": "सरल और स्पष्ट हिंदी अर्थ",
-  "hindiExample": "हिंदी में उदाहरण वाक्य",
+  "meaning": "fresh simple definition with **2-4 key phrases** in bold",
+  "example": "one natural example sentence in plain text",
+  "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
+  "hindiExample": "हिंदी उदाहरण वाक्य",
   "options": [
-    "option 1",
-    "option 2",
-    "option 3",
-    "option 4"
+    "plain text option 1",
+    "plain text option 2",
+    "plain text option 3",
+    "plain text option 4"
   ],
   "correctIndex": 1
 }`
@@ -138,38 +142,38 @@ Target English word: "${cleanWord}"
 
 Requirements:
 1. Provide the English word with proper capitalization.
-2. Provide one accurate, easy-to-understand explanation in simple English, like a dictionary explanation written for a beginner. Keep the explanation clear, concise, and grammatically correct.
-3. Provide one natural example sentence showing how the word is used in everyday English.
-4. Provide an accurate, natural Hindi meaning (hindiMeaning) using commonly understood, easy Hindi (avoid overly obscure or archaic words).
-5. Provide an accurate, natural Hindi translation of the example sentence (hindiExample).
-6. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
-   - Exactly one option must be the accurate, correct meaning.
-   - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
-   - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
-     * All four options MUST have very similar length (within 3-5 words of each other), sentence structure, complexity, and detail.
-     * The correct answer MUST NOT be noticeably longer, more elaborate, or more descriptive than the distractors.
-     * Avoid obviously unrelated, silly, or trivial definitions.
-     * Distractors must be sufficiently plausible that a learner must truly know "${cleanWord}" to choose correctly.
-     * Example of balanced options for the word "Racial":
-       - "Relating to physical strength and body structure."
-       - "Relating to groups defined by shared ancestry or ethnic background." (Correct)
-       - "Relating to cultural traditions and social behaviour."
-       - "Relating to personal beliefs and individual identity."
-   - All four options must be distinct and mutually exclusive.
-7. Provide the correct answer index: 0, 1, 2, or 3.
+2. English Meaning (meaning):
+   - Explain the word in simple, everyday English (like an easy-to-understand dictionary definition).
+   - Keep it concise and natural. Avoid long, overwhelming paragraphs.
+   - Highlight 2 to 4 important, meaningful phrases or keywords by wrapping them in Markdown bold (**phrase**).
+   - Do NOT bold entire sentences and do NOT bold the target word itself.
+   - Example format: "${cleanWord} means being able to **recover quickly**, **stay strong**, and **continue moving forward** after facing difficulties."
+3. Hindi Meaning (hindiMeaning):
+   - Provide an accurate, natural Hindi translation using commonly understood, easy Hindi (avoid archaic terms).
+   - Naturally highlight 2 to 3 important Hindi keywords or phrases in Markdown bold (**शब्द/वाक्यांश**).
+   - Example format: "मुश्किलों के बाद भी **जल्दी संभलना**, **मजबूत बने रहना** और आगे बढ़ते रहना।"
+4. Example Sentence (example):
+   - Provide ONE natural example sentence showing how the word is used in everyday English.
+   - Keep the example in normal plain text (do NOT include bold markdown here).
+5. Four Balanced Quiz Options (options):
+   - Exactly 4 multiple-choice definitions for what "${cleanWord}" means (array of 4 strings).
+   - Exactly one option must be the accurate meaning.
+   - Three options must be intelligent distractors in the same semantic theme.
+   - All 4 options must be in clean plain text (NO markdown bold asterisks), very similar in length (within 3-5 words), similar grammar, and distinct.
+6. Provide the correct answer index: 0, 1, 2, or 3.
 
-Respond ONLY with a valid JSON object matching this exact schema:
+Respond ONLY with a valid JSON object matching this schema:
 {
   "word": "${cleanWord}",
-  "meaning": "simple dictionary-style definition in everyday English",
-  "example": "one natural example sentence",
-  "hindiMeaning": "सरल और स्पष्ट हिंदी अर्थ",
-  "hindiExample": "हिंदी में उदाहरण वाक्य",
+  "meaning": "simple definition with **2-4 key phrases** in bold",
+  "example": "one natural example sentence in plain text",
+  "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
+  "hindiExample": "हिंदी उदाहरण वाक्य",
   "options": [
-    "option 1",
-    "option 2",
-    "option 3",
-    "option 4"
+    "plain text option 1",
+    "plain text option 2",
+    "plain text option 3",
+    "plain text option 4"
   ],
   "correctIndex": 1
 }`;
@@ -177,7 +181,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
     let lastError = null;
     let successfulData = null;
 
-    // Try candidate models with automatic fallback if a model is unavailable
+    // Try candidate models with automatic fallback if a model is unavailable or rate-limited
     for (const model of CANDIDATE_MODELS) {
       try {
         const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -223,7 +227,16 @@ Respond ONLY with a valid JSON object matching this exact schema:
             });
           }
 
-          // If model doesn't exist, try next candidate model
+          // If rate limited or unavailable, try fallback model
+          if (groqResponse.status === 429) {
+            lastError = {
+              status: 429,
+              message: `Rate limit on ${model}: ${errorMessage}`,
+            };
+            continue; // Try next model in CANDIDATE_MODELS
+          }
+
+          // If model doesn't exist or is not supported, try next model
           if (
             groqResponse.status === 404 ||
             errorMessage.includes('does not exist') ||
@@ -231,13 +244,6 @@ Respond ONLY with a valid JSON object matching this exact schema:
           ) {
             lastError = { status: 404, message: errorMessage };
             continue;
-          }
-
-          if (groqResponse.status === 429) {
-            return res.status(429).json({
-              error: 'Groq API rate limit reached. Please wait a few moments and click Retry.',
-              details: errorMessage,
-            });
           }
 
           lastError = { status: groqResponse.status, message: errorMessage };

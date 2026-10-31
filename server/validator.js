@@ -91,7 +91,8 @@ export function validateVocabularyPayload(raw) {
     if (typeof opt !== 'string' || !opt.trim()) {
       throw new Error(`Option at index ${i} is empty or not a string.`);
     }
-    const o = opt.trim();
+    // Strip any accidental markdown bold asterisks from quiz options
+    const o = opt.replace(/\*\*/g, '').trim();
     if (o.length < 2 || PLACEHOLDER_STRINGS.has(o.toLowerCase()) || isJsonFragment(o)) {
       throw new Error(`Option at index ${i} is invalid or contains placeholder text.`);
     }

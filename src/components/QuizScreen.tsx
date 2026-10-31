@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, CheckCircle2, XCircle, RotateCcw, Volume2, Sparkles, BookOpen } from 'lucide-react';
 import type { ActiveQuizSession } from '../types';
 import { speak, isTtsAvailable } from '../services/tts';
@@ -16,6 +17,15 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
   const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const ttsAvailable = isTtsAvailable();
+
+  // Prevent background scrolling while quiz modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   // Reset local selection state whenever a fresh quiz session is provided
   useEffect(() => {
@@ -53,7 +63,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
     }
   }, [isSpeaking, quiz.word]);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom transition-colors">
       <div className="bg-white dark:bg-zinc-950 w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-5 sm:p-7 relative my-auto transition-colors">
         {/* Navigation & Header */}
@@ -273,6 +283,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
