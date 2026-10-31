@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.Html;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
@@ -196,7 +197,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         // Reset state for new intent or initial load
         layoutFeedback.setVisibility(View.GONE);
         for (int i = 0; i < 4; i++) {
-            optionTexts[i].setText(options.get(i));
+            optionTexts[i].setText(formatMarkdown(options.get(i)));
             optionLayouts[i].setBackgroundResource(R.drawable.bg_quiz_option_default);
             optionLayouts[i].setClickable(true);
             optionLayouts[i].setFocusable(true);
@@ -213,6 +214,33 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         // RIGHT BUTTON: Close - immediately finishes popup task and returns user to previous app
         btnClose.setOnClickListener(v -> dismissQuiz());
+    }
+
+    /**
+     * Converts markdown bold (**phrase** or __phrase__) and unescaped asterisks
+     * into native Android Spanned bold text, preventing raw asterisks from displaying.
+     */
+    public static CharSequence formatMarkdown(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return "";
+        }
+        // 1. Unescape backslashes before markdown symbols
+        String cleaned = raw.replaceAll("\\\\([*_])", "$1");
+
+        // 2. Convert markdown bold ***text***, **text**, __text__ into HTML <b>text</b>
+        String html = cleaned.replaceAll("(?i)(\\*{2,3}|_{2,3})\\s*([^\\*_]+?)\\s*(\\*{2,3}|_{2,3})", "<b>$2</b>");
+
+        // 3. Remove any remaining stray syntax symbols
+        html = html.replaceAll("(\\*{2,}|_{2,})", "");
+
+        // 4. Convert newlines to HTML line breaks
+        html = html.replace("\n", "<br/>");
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            return Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY);
+        } else {
+            return Html.fromHtml(html);
+        }
     }
 
     private void handleOptionSelected(int chosenIndex) {
@@ -236,7 +264,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             textResultTitle.setText("Correct! 🎉");
             textResultTitle.setTextColor(Color.parseColor("#065F46"));
             textResultMeaning.setTextColor(Color.parseColor("#047857"));
-            textResultMeaning.setText(correctMeaning);
+            textResultMeaning.setText(formatMarkdown(correctMeaning));
         } else {
             // Selected wrong option
             optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_incorrect);
@@ -258,12 +286,12 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             if (hindiMeaning != null && !hindiMeaning.trim().isEmpty()) {
                 sb.append("\n\n🇮🇳 ").append(hindiMeaning.trim());
             }
-            textResultMeaning.setText(sb.toString());
+            textResultMeaning.setText(formatMarkdown(sb.toString()));
         }
 
         // Show example sentence if present
         if (exampleSentence != null && !exampleSentence.trim().isEmpty()) {
-            textExample.setText("\"" + exampleSentence.trim() + "\"");
+            textExample.setText(formatMarkdown("\"" + exampleSentence.trim() + "\""));
             layoutExample.setVisibility(View.VISIBLE);
         } else {
             layoutExample.setVisibility(View.GONE);
