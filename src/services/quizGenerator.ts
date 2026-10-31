@@ -292,6 +292,8 @@ export function generateFreshQuizSession(
     word: targetWord.word,
     meaning: correctMeaning,
     example: targetWord.example,
+    hindiMeaning: targetWord.hindiMeaning,
+    hindiExample: targetWord.hindiExample,
     options: shuffledChoices,
     correctIndex,
   };
@@ -328,6 +330,8 @@ export async function generateChallengingQuizSessionAsync(
         word: targetWord.word,
         meaning: targetWord.meaning.trim(),
         example: targetWord.example,
+        hindiMeaning: targetWord.hindiMeaning,
+        hindiExample: targetWord.hindiExample,
         options,
         correctIndex,
       };

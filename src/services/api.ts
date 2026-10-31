@@ -98,6 +98,8 @@ export function validateAiQuizResponse(data: unknown): WordQuizPayload {
     word: raw.word.trim(),
     meaning: raw.meaning.trim(),
     example: raw.example.trim(),
+    hindiMeaning: typeof raw.hindiMeaning === 'string' && raw.hindiMeaning.trim() ? raw.hindiMeaning.trim() : undefined,
+    hindiExample: typeof raw.hindiExample === 'string' && raw.hindiExample.trim() ? raw.hindiExample.trim() : undefined,
     options: raw.options.map((o) => String(o).trim()) as [string, string, string, string],
     correctIndex: idx,
   };

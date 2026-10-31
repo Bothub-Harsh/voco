@@ -4,6 +4,8 @@ export interface VocabularyWord {
   wordLower: string; // for unique case-insensitive lookup
   meaning: string;
   example: string;
+  hindiMeaning?: string; // Clear, natural Hindi translation
+  hindiExample?: string; // Hindi translation of the example sentence
   options: [string, string, string, string];
   correctIndex: number;
   dateAdded: number;
@@ -14,6 +16,8 @@ export interface ManualWordPayload {
   word: string;
   meaning: string;
   example?: string;
+  hindiMeaning?: string;
+  hindiExample?: string;
 }
 
 export interface ActiveQuizSession {
@@ -21,6 +25,8 @@ export interface ActiveQuizSession {
   word: string;
   meaning: string;
   example: string;
+  hindiMeaning?: string;
+  hindiExample?: string;
   options: [string, string, string, string];
   correctIndex: number;
 }

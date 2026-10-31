@@ -29,6 +29,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     public static final String EXTRA_EXAMPLE = "com.harsh.voco.EXTRA_EXAMPLE";
     public static final String EXTRA_OPTIONS = "com.harsh.voco.EXTRA_OPTIONS";
     public static final String EXTRA_CORRECT_INDEX = "com.harsh.voco.EXTRA_CORRECT_INDEX";
+    public static final String EXTRA_HINDI_MEANING = "com.harsh.voco.EXTRA_HINDI_MEANING";
+    public static final String EXTRA_HINDI_EXAMPLE = "com.harsh.voco.EXTRA_HINDI_EXAMPLE";
 
     public static final String PREFS_QUIZ_STATS = "voco_quiz_stats";
     public static final String KEY_TOTAL_ANSWERED = "total_answered";
@@ -41,6 +43,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private String wordText = "";
     private String correctMeaning = "";
     private String exampleSentence = "";
+    private String hindiMeaning = "";
+    private String hindiExample = "";
     private List<String> options = new ArrayList<>();
     private int correctIndex = 0;
     private boolean hasAnswered = false;
@@ -100,6 +104,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             wordText = intent.getStringExtra(EXTRA_WORD);
             correctMeaning = intent.getStringExtra(EXTRA_MEANING);
             exampleSentence = intent.getStringExtra(EXTRA_EXAMPLE);
+            hindiMeaning = intent.getStringExtra(EXTRA_HINDI_MEANING);
+            hindiExample = intent.getStringExtra(EXTRA_HINDI_EXAMPLE);
             ArrayList<String> extraOpts = intent.getStringArrayListExtra(EXTRA_OPTIONS);
             if (extraOpts != null && extraOpts.size() >= 4) {
                 options = extraOpts;

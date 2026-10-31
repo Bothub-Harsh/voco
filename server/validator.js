@@ -35,7 +35,7 @@ export function validateVocabularyPayload(raw) {
     throw new Error('AI response is not an object.');
   }
 
-  const { word, meaning, example, options, correctIndex } = raw;
+  const { word, meaning, example, options, correctIndex, hindiMeaning, hindiExample } = raw;
 
   // 1. Validate word
   if (typeof word !== 'string' || !word.trim()) {
@@ -119,10 +119,22 @@ export function validateVocabularyPayload(raw) {
   }
   const randomizedCorrectIndex = shuffledOptions.indexOf(correctOptionText);
 
+  let cleanHindiMeaning = undefined;
+  if (typeof hindiMeaning === 'string' && hindiMeaning.trim().length >= 2 && !PLACEHOLDER_STRINGS.has(hindiMeaning.toLowerCase().trim())) {
+    cleanHindiMeaning = hindiMeaning.trim();
+  }
+
+  let cleanHindiExample = undefined;
+  if (typeof hindiExample === 'string' && hindiExample.trim().length >= 4 && !PLACEHOLDER_STRINGS.has(hindiExample.toLowerCase().trim())) {
+    cleanHindiExample = hindiExample.trim();
+  }
+
   return {
     word: cleanWord,
     meaning: cleanMeaning,
     example: cleanExample,
+    hindiMeaning: cleanHindiMeaning,
+    hindiExample: cleanHindiExample,
     options: shuffledOptions,
     correctIndex: randomizedCorrectIndex,
   };

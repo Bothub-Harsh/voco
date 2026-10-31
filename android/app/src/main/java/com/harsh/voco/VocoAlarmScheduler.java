@@ -32,6 +32,8 @@ public class VocoAlarmScheduler {
     public static final String KEY_TARGET_ELAPSED = "target_elapsed_realtime"; // monotonic ms for native scheduling
     public static final String KEY_SCHEDULE_GENERATION = "schedule_generation"; // token to invalidate stale alarms
     public static final String KEY_LAST_WORD_ID = "last_word_id";
+    public static final String KEY_ROTATION_QUEUE = "rotation_queue"; // JSON array of word IDs for cycle
+    public static final String KEY_SHOWN_IN_CYCLE = "shown_in_cycle"; // JSON array of word IDs already shown
 
     // Intent actions and extras
     public static final String ACTION_PRACTICE_REMINDER = "com.harsh.voco.PRACTICE_REMINDER";
@@ -196,6 +198,8 @@ public class VocoAlarmScheduler {
         String wordText,
         String meaning,
         String example,
+        String hindiMeaning,
+        String hindiExample,
         List<String> options,
         int correctIndex
     ) {
@@ -212,6 +216,12 @@ public class VocoAlarmScheduler {
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_WORD, wordText);
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_MEANING, meaning);
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_EXAMPLE, example);
+        if (hindiMeaning != null && !hindiMeaning.isEmpty()) {
+            quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_HINDI_MEANING, hindiMeaning);
+        }
+        if (hindiExample != null && !hindiExample.isEmpty()) {
+            quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_HINDI_EXAMPLE, hindiExample);
+        }
         if (options != null) {
             quizIntent.putStringArrayListExtra(VocoQuizDialogActivity.EXTRA_OPTIONS, new ArrayList<>(options));
         }
@@ -239,6 +249,18 @@ public class VocoAlarmScheduler {
 
         nm.notify(NOTIFICATION_ID, builder.build());
         Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (targets native quiz popup)");
+    }
+
+    public static void showNotification(
+        Context context,
+        String wordId,
+        String wordText,
+        String meaning,
+        String example,
+        List<String> options,
+        int correctIndex
+    ) {
+        showNotification(context, wordId, wordText, meaning, example, null, null, options, correctIndex);
     }
 
     public static void showNotification(Context context, String wordId, String wordText) {

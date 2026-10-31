@@ -94,13 +94,15 @@ Target English word: "${cleanWord}"
 Previous explanation: "${currentMeaning || ''}"
 Previous example sentence: "${currentExample || ''}"
 
-Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, and genuinely challenging multiple-choice quiz options for "${cleanWord}".
+Goal: Provide a FRESH, ALTERNATIVE explanation, example sentence, Hindi meaning, Hindi example, and genuinely challenging multiple-choice quiz options for "${cleanWord}".
 
 Requirements:
 1. Provide the English word with proper capitalization.
 2. Provide an accurate, clear explanation in simple English written like a dictionary definition (easy to understand for an English learner, grammatically correct, concise).
 3. Provide one natural, fresh example sentence showing how the word is used in everyday English.
-4. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
+4. Provide an accurate, natural Hindi meaning (hindiMeaning) using commonly understood, easy Hindi (avoid overly obscure or archaic words).
+5. Provide an accurate, natural Hindi translation of the example sentence (hindiExample).
+6. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
    - Exactly one option must be the accurate, correct meaning.
    - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
    - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
@@ -114,13 +116,15 @@ Requirements:
        - "Relating to cultural traditions and social behaviour."
        - "Relating to personal beliefs and individual identity."
    - All four options must be distinct and mutually exclusive.
-5. Provide the correct answer index: 0, 1, 2, or 3.
+7. Provide the correct answer index: 0, 1, 2, or 3.
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
   "word": "${cleanWord}",
   "meaning": "fresh simple definition in clear everyday English",
   "example": "fresh natural example sentence",
+  "hindiMeaning": "सरल और स्पष्ट हिंदी अर्थ",
+  "hindiExample": "हिंदी में उदाहरण वाक्य",
   "options": [
     "option 1",
     "option 2",
@@ -136,7 +140,9 @@ Requirements:
 1. Provide the English word with proper capitalization.
 2. Provide one accurate, easy-to-understand explanation in simple English, like a dictionary explanation written for a beginner. Keep the explanation clear, concise, and grammatically correct.
 3. Provide one natural example sentence showing how the word is used in everyday English.
-4. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
+4. Provide an accurate, natural Hindi meaning (hindiMeaning) using commonly understood, easy Hindi (avoid overly obscure or archaic words).
+5. Provide an accurate, natural Hindi translation of the example sentence (hindiExample).
+6. Provide exactly four challenging multiple-choice options (A, B, C, D) for what the word means:
    - Exactly one option must be the accurate, correct meaning.
    - The other three options must be intelligent, believable distractors related to the SAME general subject area, semantic category, or theme as the target word.
    - CRITICAL REQUIREMENT FOR BALANCED OPTIONS:
@@ -150,13 +156,15 @@ Requirements:
        - "Relating to cultural traditions and social behaviour."
        - "Relating to personal beliefs and individual identity."
    - All four options must be distinct and mutually exclusive.
-5. Provide the correct answer index: 0, 1, 2, or 3.
+7. Provide the correct answer index: 0, 1, 2, or 3.
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
   "word": "${cleanWord}",
   "meaning": "simple dictionary-style definition in everyday English",
   "example": "one natural example sentence",
+  "hindiMeaning": "सरल और स्पष्ट हिंदी अर्थ",
+  "hindiExample": "हिंदी में उदाहरण वाक्य",
   "options": [
     "option 1",
     "option 2",
