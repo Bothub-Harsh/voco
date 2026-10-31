@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CheckCircle2, XCircle, RotateCcw, Volume2, Sparkles, BookOpen } from 'lucide-react';
 import type { ActiveQuizSession } from '../types';
+import { speak, isTtsAvailable } from '../services/tts';
 
 interface QuizScreenProps {
   quiz: ActiveQuizSession;
@@ -13,11 +14,14 @@ const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgain }) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const ttsAvailable = isTtsAvailable();
 
   // Reset local selection state whenever a fresh quiz session is provided
   useEffect(() => {
     setSelectedIndex(null);
     setHasSubmitted(false);
+    setIsSpeaking(false);
   }, [quiz]);
 
   const isCorrect = selectedIndex !== null && selectedIndex === quiz.correctIndex;
@@ -35,17 +39,19 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
   const handleTryAgain = () => {
     setSelectedIndex(null);
     setHasSubmitted(false);
+    setIsSpeaking(false);
     onTryAgain();
   };
 
-  const speakWord = () => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(quiz.word);
-      utterance.lang = 'en-US';
-      window.speechSynthesis.speak(utterance);
+  const handleSpeak = useCallback(async () => {
+    if (isSpeaking) return;
+    setIsSpeaking(true);
+    try {
+      await speak(quiz.word);
+    } finally {
+      setTimeout(() => setIsSpeaking(false), 2500);
     }
-  };
+  }, [isSpeaking, quiz.word]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom transition-colors">
@@ -72,12 +78,17 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white capitalize tracking-tight">
               {quiz.word}
             </h2>
-            {'speechSynthesis' in window && (
+            {ttsAvailable && (
               <button
                 type="button"
-                onClick={speakWord}
-                className="p-1.5 text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-zinc-900 rounded-full transition-colors shrink-0"
-                title="Pronounce word"
+                onClick={handleSpeak}
+                disabled={isSpeaking}
+                className={`p-1.5 rounded-full transition-colors shrink-0 ${
+                  isSpeaking
+                    ? 'text-[#6554F5] bg-indigo-50 dark:bg-[#6554F5]/15 animate-pulse'
+                    : 'text-slate-400 dark:text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-zinc-900'
+                }`}
+                title={isSpeaking ? 'Speaking…' : 'Pronounce word'}
                 aria-label="Pronounce word"
               >
                 <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -157,34 +168,71 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
           </button>
         ) : (
           <div className="space-y-3.5 animate-fade-in-up">
-            {/* Feedback Banner */}
-            <div
-              className={`p-3.5 sm:p-4 rounded-xl border text-center ${
-                isCorrect
-                  ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80 text-emerald-950 dark:text-[#28C995]'
-                  : 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/80 text-rose-950 dark:text-rose-200'
-              }`}
-            >
-              {isCorrect ? (
-                <>
-                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-emerald-700 dark:text-[#28C995] font-bold text-sm sm:text-base">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#28C995]" />
-                    <span>Brilliant! That&apos;s correct.</span>
-                  </div>
-                  <p className="text-xs text-emerald-800/90 dark:text-emerald-300 leading-relaxed">{quiz.meaning}</p>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-center space-x-1.5 mb-1 text-rose-700 dark:text-rose-400 font-bold text-sm sm:text-base">
-                    <XCircle className="w-5 h-5 text-rose-500 dark:text-rose-400" />
-                    <span>Not quite right</span>
-                  </div>
-                  <p className="text-xs text-rose-900 dark:text-rose-300 leading-relaxed">
-                    Correct meaning: <span className="font-semibold text-rose-950 dark:text-rose-200">{quiz.meaning}</span>
+            {isCorrect ? (
+              /* ── Correct Answer Feedback ── */
+              <div className="p-3.5 sm:p-4 rounded-xl border bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80 text-emerald-950 dark:text-[#28C995]">
+                <div className="flex items-center space-x-1.5 mb-2 text-emerald-700 dark:text-[#28C995] font-bold text-sm sm:text-base">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#28C995]" />
+                  <span>Brilliant! That&apos;s correct.</span>
+                </div>
+                <p className="text-xs text-emerald-800/90 dark:text-emerald-300 leading-relaxed">
+                  {quiz.meaning}
+                </p>
+                {quiz.hindiMeaning && (
+                  <p className="text-xs text-emerald-700/80 dark:text-emerald-400 leading-relaxed mt-1.5 font-medium">
+                    🇮🇳 {quiz.hindiMeaning}
                   </p>
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              /* ── Incorrect Answer Feedback ── */
+              <div className="rounded-xl border border-rose-200 dark:border-rose-800/80 overflow-hidden">
+                {/* Wrong-answer header */}
+                <div className="bg-rose-50/90 dark:bg-rose-950/40 px-3.5 py-2.5 flex items-center space-x-1.5">
+                  <XCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
+                  <span className="text-xs font-bold text-rose-700 dark:text-rose-400">Not quite — here&apos;s the correct answer</span>
+                </div>
+
+                {/* Correct answer body */}
+                <div className="bg-white dark:bg-zinc-900 px-3.5 py-3 space-y-2.5">
+                  {/* Correct Answer heading + meaning */}
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400 mb-1">
+                      Correct Answer
+                    </p>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-zinc-100 leading-relaxed">
+                      {quiz.meaning}
+                    </p>
+                  </div>
+
+                  {/* Simple explanation */}
+                  {quiz.meaning && (
+                    <div className="bg-indigo-50/60 dark:bg-[#6554F5]/10 rounded-lg px-3 py-2 border border-indigo-100 dark:border-[#6554F5]/20">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#6554F5] dark:text-[#8172F8] mb-1">
+                        Simple Explanation
+                      </p>
+                      <p className="text-xs text-slate-700 dark:text-zinc-300 leading-relaxed">
+                        <strong className="text-slate-900 dark:text-zinc-100 capitalize">{quiz.word}</strong> means{' '}
+                        {quiz.meaning.charAt(0).toLowerCase() + quiz.meaning.slice(1)}
+                        {quiz.meaning.endsWith('.') ? '' : '.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Hindi meaning */}
+                  {quiz.hindiMeaning && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400 mb-1">
+                        Hindi Meaning
+                      </p>
+                      <p className="text-sm text-slate-600 dark:text-zinc-300 leading-relaxed">
+                        🇮🇳 {quiz.hindiMeaning}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Example sentence */}
             {quiz.example && (
@@ -196,6 +244,11 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
                 <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 italic leading-relaxed">
                   &ldquo;{quiz.example}&rdquo;
                 </p>
+                {quiz.hindiExample && !isCorrect && (
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 italic leading-relaxed mt-1.5">
+                    &ldquo;{quiz.hindiExample}&rdquo;
+                  </p>
+                )}
               </div>
             )}
 

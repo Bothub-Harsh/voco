@@ -340,13 +340,25 @@ export function App() {
     }
   };
 
-  const handleAddManualWord = async (inputWord: string, meaning: string, example?: string) => {
+  const handleAddManualWord = async (
+    inputWord: string,
+    meaning: string,
+    example?: string,
+    hindiMeaning?: string,
+    hindiExample?: string
+  ) => {
     setIsLoading(true);
     setErrorMessage(null);
     setLastFailedWord(null);
 
     try {
-      const saved = await saveManualWord({ word: inputWord, meaning, example });
+      const saved = await saveManualWord({
+        word: inputWord,
+        meaning,
+        example,
+        hindiMeaning,
+        hindiExample,
+      });
       const updatedList = await refreshWords();
 
       if (isNativeApp() && updatedList.length > 0) {
@@ -386,6 +398,8 @@ export function App() {
         example: refreshed.example,
         options: refreshed.options,
         correctIndex: refreshed.correctIndex,
+        hindiMeaning: refreshed.hindiMeaning ?? wordToRefresh.hindiMeaning,
+        hindiExample: refreshed.hindiExample ?? wordToRefresh.hindiExample,
       };
 
       await updateWord(updatedWord);

@@ -6,8 +6,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 
 import com.getcapacitor.JSObject;
@@ -16,6 +18,10 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.util.Locale;
 
 @CapacitorPlugin(
     name = "VocoNotificationScheduler",
@@ -26,10 +32,28 @@ import com.getcapacitor.annotation.Permission;
 public class VocoNotificationPlugin extends Plugin {
     private static final String TAG = "VocoNotificationPlugin";
 
+    // ── Text-to-Speech engine ──
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
+
     @Override
     public void load() {
         super.load();
         VocoAlarmScheduler.createNotificationChannel(getContext());
+
+        // Initialize TTS engine
+        tts = new TextToSpeech(getContext(), status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                int langResult = tts.setLanguage(new Locale("en", "IN"));
+                if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    tts.setLanguage(Locale.US);
+                }
+                ttsReady = true;
+                Log.d(TAG, "TTS engine initialized successfully");
+            } else {
+                Log.w(TAG, "TTS engine initialization failed: " + status);
+            }
+        });
     }
 
     @Override
@@ -234,5 +258,188 @@ public class VocoNotificationPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("opened", true);
         call.resolve(ret);
+    }
+
+    // ─────────────────────────────────────────────
+    // Text-to-Speech
+    // ─────────────────────────────────────────────
+
+    @PluginMethod
+    public void speak(PluginCall call) {
+        String text = call.getString("text", "");
+        String lang = call.getString("lang", "en-IN");
+
+        if (text == null || text.trim().isEmpty()) {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            call.resolve(ret);
+            return;
+        }
+
+        if (!ttsReady || tts == null) {
+            Log.w(TAG, "TTS not ready, cannot speak");
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            call.resolve(ret);
+            return;
+        }
+
+        // Stop any ongoing speech first
+        tts.stop();
+
+        // Try to set the requested locale
+        try {
+            String[] parts = lang.split("-");
+            Locale locale = parts.length >= 2 ? new Locale(parts[0], parts[1]) : new Locale(parts[0]);
+            int result = tts.setLanguage(locale);
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                tts.setLanguage(Locale.US);
+            }
+        } catch (Exception e) {
+            tts.setLanguage(Locale.US);
+        }
+
+        tts.speak(text.trim(), TextToSpeech.QUEUE_FLUSH, null, "voco_speak");
+        Log.d(TAG, "TTS speaking: " + text.trim());
+
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void stopSpeech(PluginCall call) {
+        if (tts != null) {
+            tts.stop();
+        }
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    // ─────────────────────────────────────────────
+    // Native File Export — saves JSON to Downloads
+    // ─────────────────────────────────────────────
+
+    @PluginMethod
+    public void exportBackup(PluginCall call) {
+        String fileName = call.getString("fileName", "Voco_Backup.json");
+        String content = call.getString("content", "");
+
+        if (content == null || content.isEmpty()) {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("error", "No content to export.");
+            call.resolve(ret);
+            return;
+        }
+
+        Context ctx = getContext();
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ (API 29+): write to Downloads via MediaStore / DownloadManager-friendly path
+                // Use the app's own external files dir which is publicly visible in Files app
+                File docsDir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+                if (docsDir == null) {
+                    docsDir = ctx.getFilesDir();
+                }
+                if (!docsDir.exists()) {
+                    docsDir.mkdirs();
+                }
+                File outFile = new File(docsDir, fileName);
+                FileWriter writer = new FileWriter(outFile);
+                writer.write(content);
+                writer.flush();
+                writer.close();
+
+                String filePath = outFile.getAbsolutePath();
+                Log.d(TAG, "Backup saved (Android 10+): " + filePath);
+
+                // Trigger a share/open intent so user can move to Downloads if they want
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName);
+                values.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json");
+                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 1);
+                android.net.Uri collection = null;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    collection = android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                }
+                if (collection != null) {
+                    try {
+                        android.net.Uri fileUri = ctx.getContentResolver().insert(collection, values);
+                        if (fileUri != null) {
+                            try (java.io.OutputStream os = ctx.getContentResolver().openOutputStream(fileUri)) {
+                                if (os != null) {
+                                    os.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                }
+                            }
+                            values.clear();
+                            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0);
+                            ctx.getContentResolver().update(fileUri, values, null, null);
+
+                            JSObject ret = new JSObject();
+                            ret.put("success", true);
+                            ret.put("filePath", fileUri.toString());
+                            ret.put("message", "Voco backup saved to Downloads: " + fileName);
+                            call.resolve(ret);
+                            return;
+                        }
+                    } catch (Exception mediaEx) {
+                        Log.w(TAG, "MediaStore insert failed, falling back to external files: " + mediaEx.getMessage());
+                    }
+                }
+
+                // Fallback: return the external files path
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("filePath", filePath);
+                ret.put("message", "Backup saved to device storage: " + fileName + ". Open Files app → Voco → Documents to find it.");
+                call.resolve(ret);
+
+            } else {
+                // Android 9 and below: write directly to Downloads
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                File outFile = new File(downloadsDir, fileName);
+                FileWriter writer = new FileWriter(outFile);
+                writer.write(content);
+                writer.flush();
+                writer.close();
+
+                // Notify media scanner so it appears in Downloads immediately
+                Intent scanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                scanIntent.setData(Uri.fromFile(outFile));
+                ctx.sendBroadcast(scanIntent);
+
+                String filePath = outFile.getAbsolutePath();
+                Log.d(TAG, "Backup saved to Downloads: " + filePath);
+
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("filePath", filePath);
+                ret.put("message", "Voco backup downloaded successfully. Check your Downloads folder.");
+                call.resolve(ret);
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "exportBackup failed: " + e.getMessage(), e);
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("error", "Failed to save backup: " + e.getMessage());
+            call.resolve(ret);
+        }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        super.handleOnDestroy();
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
     }
 }

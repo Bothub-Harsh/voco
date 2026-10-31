@@ -232,6 +232,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             textResultTitle.setText("Correct! 🎉");
             textResultTitle.setTextColor(Color.parseColor("#065F46"));
             textResultMeaning.setTextColor(Color.parseColor("#047857"));
+            textResultMeaning.setText(correctMeaning);
         } else {
             // Selected wrong option
             optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_incorrect);
@@ -244,12 +245,17 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             optionBadges[correctIndex].setTextColor(Color.WHITE);
 
             bannerResult.setBackgroundResource(R.drawable.bg_feedback_incorrect);
-            textResultTitle.setText("Not quite right");
+            textResultTitle.setText("Correct Answer");
             textResultTitle.setTextColor(Color.parseColor("#9F1239"));
-            textResultMeaning.setTextColor(Color.parseColor("#BE123C"));
-        }
+            textResultMeaning.setTextColor(Color.parseColor("#1E293B"));
 
-        textResultMeaning.setText(correctMeaning);
+            // Build rich feedback text: correct meaning + Hindi meaning if available
+            StringBuilder sb = new StringBuilder(correctMeaning);
+            if (hindiMeaning != null && !hindiMeaning.trim().isEmpty()) {
+                sb.append("\n\n🇮🇳 ").append(hindiMeaning.trim());
+            }
+            textResultMeaning.setText(sb.toString());
+        }
 
         // Show example sentence if present
         if (exampleSentence != null && !exampleSentence.trim().isEmpty()) {

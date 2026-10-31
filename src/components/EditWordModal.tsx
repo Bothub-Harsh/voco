@@ -16,6 +16,8 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
   const [editedWord, setEditedWord] = useState(word.word);
   const [editedMeaning, setEditedMeaning] = useState(word.meaning);
   const [editedExample, setEditedExample] = useState(word.example);
+  const [editedHindiMeaning, setEditedHindiMeaning] = useState(word.hindiMeaning || '');
+  const [editedHindiExample, setEditedHindiExample] = useState(word.hindiExample || '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +28,8 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
     const cleanWord = editedWord.trim();
     const cleanMeaning = editedMeaning.trim();
     const cleanExample = editedExample.trim();
+    const cleanHindiMeaning = editedHindiMeaning.trim();
+    const cleanHindiExample = editedHindiExample.trim();
 
     if (!cleanWord) {
       setError('Word cannot be empty.');
@@ -48,6 +52,8 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
         wordLower: cleanWord.toLowerCase(),
         meaning: cleanMeaning,
         example: cleanExample,
+        hindiMeaning: cleanHindiMeaning || undefined,
+        hindiExample: cleanHindiExample || undefined,
       });
       onClose();
     } catch (err) {
@@ -119,6 +125,32 @@ export const EditWordModal: React.FC<EditWordModalProps> = ({
               onChange={(e) => setEditedExample(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 focus:bg-white focus:dark:bg-zinc-900 focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] focus:outline-none transition-all resize-none"
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1">
+              Hindi Meaning <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={editedHindiMeaning}
+              onChange={(e) => setEditedHindiMeaning(e.target.value)}
+              placeholder="e.g. अनिच्छुक — किसी काम को करने का मन न होना।"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 focus:bg-white focus:dark:bg-zinc-900 focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] focus:outline-none transition-all resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1">
+              Hindi Example <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={editedHindiExample}
+              onChange={(e) => setEditedHindiExample(e.target.value)}
+              placeholder="e.g. मेरा कक्षा के सामने बोलने का मन नहीं था।"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 text-slate-800 dark:text-zinc-100 focus:bg-white focus:dark:bg-zinc-900 focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] focus:outline-none transition-all resize-none"
             />
           </div>
 

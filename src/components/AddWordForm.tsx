@@ -3,7 +3,7 @@ import { Plus, Loader2, AlertCircle, RotateCcw, Sparkles, PenTool, Save } from '
 
 interface AddWordFormProps {
   onAddWord: (word: string) => Promise<void>;
-  onAddManualWord: (word: string, meaning: string, example?: string) => Promise<void>;
+  onAddManualWord: (word: string, meaning: string, example?: string, hindiMeaning?: string, hindiExample?: string) => Promise<void>;
   isLoading: boolean;
   error: string | null;
   onRetry: () => void;
@@ -22,6 +22,8 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
   const [inputWord, setInputWord] = useState('');
   const [manualMeaning, setManualMeaning] = useState('');
   const [manualExample, setManualExample] = useState('');
+  const [manualHindiMeaning, setManualHindiMeaning] = useState('');
+  const [manualHindiExample, setManualHindiExample] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleAiSubmit = async (e: React.FormEvent) => {
@@ -53,11 +55,13 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
       return;
     }
 
-    await onAddManualWord(trimmedWord, trimmedMeaning, trimmedExample || undefined);
+    await onAddManualWord(trimmedWord, trimmedMeaning, trimmedExample || undefined, manualHindiMeaning.trim() || undefined, manualHindiExample.trim() || undefined);
     if (!error) {
       setInputWord('');
       setManualMeaning('');
       setManualExample('');
+      setManualHindiMeaning('');
+      setManualHindiExample('');
     }
   };
 
@@ -208,6 +212,42 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               value={manualExample}
               onChange={(e) => setManualExample(e.target.value)}
               placeholder="e.g. The quiet lake was peaceful and serene."
+              disabled={isLoading}
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="hindi-meaning-input-manual"
+              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+            >
+              Hindi Meaning <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              id="hindi-meaning-input-manual"
+              rows={2}
+              value={manualHindiMeaning}
+              onChange={(e) => setManualHindiMeaning(e.target.value)}
+              placeholder="e.g. शांत और स्थिर — अशांति से मुक्त।"
+              disabled={isLoading}
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="hindi-example-input-manual"
+              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+            >
+              Hindi Example <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              id="hindi-example-input-manual"
+              rows={2}
+              value={manualHindiExample}
+              onChange={(e) => setManualHindiExample(e.target.value)}
+              placeholder="e.g. वह शांत झील के किनारे बैठा था।"
               disabled={isLoading}
               className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
             />

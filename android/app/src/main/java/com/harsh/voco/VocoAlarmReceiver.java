@@ -57,6 +57,8 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
         String wordText = null;
         String meaning = "";
         String example = "";
+        String hindiMeaning = "";
+        String hindiExample = "";
         List<String> options = new ArrayList<>();
         int correctIndex = 0;
 
@@ -85,6 +87,8 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
                 wordText = selected.optString("word");
                 meaning = selected.optString("meaning", "");
                 example = selected.optString("example", "");
+                hindiMeaning = selected.optString("hindiMeaning", "");
+                hindiExample = selected.optString("hindiExample", "");
 
                 // Check pre-saved options
                 JSONArray optArr = selected.optJSONArray("options");
@@ -112,9 +116,9 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
 
         // 1. Deliver the notification natively targeting the native popup quiz!
         if (wordText != null && !wordText.isEmpty()) {
-            VocoAlarmScheduler.showNotification(context, wordId, wordText, meaning, example, options, correctIndex);
+            VocoAlarmScheduler.showNotification(context, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex);
         } else {
-            VocoAlarmScheduler.showNotification(context, "", "Vocabulary", "Vocabulary practice", "", null, 0);
+            VocoAlarmScheduler.showNotification(context, "", "Vocabulary", "Vocabulary practice", "", null, null, null, 0);
         }
 
         // 2. Schedule next reminder using monotonic clock anchored to intended deadline to eliminate drift

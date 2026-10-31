@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Trash2, HelpCircle, Calendar, Sparkles, Edit3, RotateCw, AlertCircle, X, Search } from 'lucide-react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { Trash2, HelpCircle, Calendar, Sparkles, Edit3, RotateCw, AlertCircle, X, Search, Volume2 } from 'lucide-react';
 import type { VocabularyWord } from '../types';
 import { EditWordModal } from './EditWordModal';
+import { speak, stopSpeech, isTtsAvailable } from '../services/tts';
 
 interface WordListProps {
   words: VocabularyWord[];
@@ -29,6 +30,27 @@ export const WordList: React.FC<WordListProps> = ({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingWord, setEditingWord] = useState<VocabularyWord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  // Per-card meaning tab: 'en' | 'hi'
+  const [meaningTab, setMeaningTab] = useState<Record<string, 'en' | 'hi'>>({});
+
+  const ttsAvailable = isTtsAvailable();
+
+  const handleSpeak = useCallback(async (word: VocabularyWord) => {
+    if (speakingId === word.id) {
+      // Already speaking this word — stop it
+      await stopSpeech();
+      setSpeakingId(null);
+      return;
+    }
+    setSpeakingId(word.id);
+    try {
+      await speak(word.word);
+    } finally {
+      // Reset after a short delay so the visual state clears
+      setTimeout(() => setSpeakingId(null), 2500);
+    }
+  }, [speakingId]);
 
   const filteredWords = useMemo(() => {
     if (!searchQuery.trim()) return words;
@@ -154,6 +176,21 @@ export const WordList: React.FC<WordListProps> = ({
                   <h3 className="text-lg font-bold text-slate-900 dark:text-zinc-100 capitalize tracking-tight leading-tight">
                     {item.word}
                   </h3>
+                  {ttsAvailable && (
+                    <button
+                      type="button"
+                      onClick={() => handleSpeak(item)}
+                      className={`p-1 rounded-full transition-all ${
+                        speakingId === item.id
+                          ? 'text-[#6554F5] bg-indigo-50 dark:bg-[#6554F5]/15 animate-pulse'
+                          : 'text-slate-400 dark:text-zinc-500 hover:text-[#6554F5] dark:hover:text-[#6554F5] hover:bg-indigo-50 dark:hover:bg-zinc-900'
+                      }`}
+                      title={speakingId === item.id ? 'Speaking…' : `Pronounce "${item.word}"`}
+                      aria-label={`Pronounce ${item.word}`}
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </button>
+                  )}
                   <span className="inline-flex items-center text-[10px] text-slate-400 dark:text-zinc-400 font-medium">
                     <Calendar className="w-3 h-3 mr-0.5" />
                     {dateStr}
@@ -172,6 +209,21 @@ export const WordList: React.FC<WordListProps> = ({
 
                 {/* Action buttons */}
                 <div className="flex items-center space-x-1 shrink-0">
+                  {ttsAvailable && (
+                    <button
+                      type="button"
+                      onClick={() => handleSpeak(item)}
+                      className={`p-1.5 border rounded-lg transition-colors ${
+                        speakingId === item.id
+                          ? 'text-[#6554F5] bg-indigo-50 dark:bg-[#6554F5]/15 border-indigo-200 dark:border-[#6554F5]/30 animate-pulse'
+                          : 'text-slate-400 dark:text-zinc-400 hover:text-[#6554F5] dark:hover:text-[#6554F5] hover:bg-indigo-50 dark:hover:bg-zinc-900 border-transparent hover:border-slate-200 dark:hover:border-zinc-800'
+                      }`}
+                      title={speakingId === item.id ? 'Speaking…' : `Pronounce "${item.word}"`}
+                      aria-label={`Pronounce ${item.word}`}
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onOpenQuiz(item)}
@@ -207,37 +259,71 @@ export const WordList: React.FC<WordListProps> = ({
 
               {/* Meaning & Example container */}
               <div className="mt-3 bg-slate-50/70 dark:bg-zinc-900 rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-zinc-800 space-y-3">
+                {/* Language tab switcher — only show when Hindi is available */}
+                {item.hindiMeaning && (
+                  <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-zinc-850 rounded-lg p-0.5 border border-slate-200/60 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setMeaningTab((prev) => ({ ...prev, [item.id]: 'en' }))}
+                      className={`flex-1 py-1 text-[10px] font-semibold rounded-md transition-all ${
+                        (meaningTab[item.id] ?? 'en') === 'en'
+                          ? 'bg-white dark:bg-zinc-900 text-[#6554F5] dark:text-[#8172F8] shadow-xs'
+                          : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+                      }`}
+                    >
+                      English
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMeaningTab((prev) => ({ ...prev, [item.id]: 'hi' }))}
+                      className={`flex-1 py-1 text-[10px] font-semibold rounded-md transition-all ${
+                        (meaningTab[item.id] ?? 'en') === 'hi'
+                          ? 'bg-white dark:bg-zinc-900 text-[#6554F5] dark:text-[#8172F8] shadow-xs'
+                          : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+                      }`}
+                    >
+                      हिंदी
+                    </button>
+                  </div>
+                )}
+
                 {/* Meaning */}
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
-                      Meaning
+                      {(meaningTab[item.id] ?? 'en') === 'hi' && item.hindiMeaning ? 'हिंदी अर्थ' : 'Meaning'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onRefreshWord(item)}
-                      disabled={isRefreshing}
-                      className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-zinc-850 hover:bg-indigo-50 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Generate a fresh explanation"
-                    >
-                      <RotateCw
-                        className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`}
-                      />
-                      <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-                    </button>
+                    {(meaningTab[item.id] ?? 'en') === 'en' && (
+                      <button
+                        type="button"
+                        onClick={() => onRefreshWord(item)}
+                        disabled={isRefreshing}
+                        className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-zinc-850 hover:bg-indigo-50 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Generate a fresh explanation"
+                      >
+                        <RotateCw
+                          className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`}
+                        />
+                        <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+                      </button>
+                    )}
                   </div>
                   <p className="text-sm text-slate-700 dark:text-zinc-200 leading-relaxed">
-                    {item.meaning}
+                    {(meaningTab[item.id] ?? 'en') === 'hi' && item.hindiMeaning
+                      ? item.hindiMeaning
+                      : item.meaning}
                   </p>
                 </div>
 
                 {/* Example */}
                 <div className="pt-2.5 border-t border-slate-200/80 dark:border-zinc-850">
                   <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider block mb-1">
-                    Example
+                    {(meaningTab[item.id] ?? 'en') === 'hi' && item.hindiExample ? 'हिंदी उदाहरण' : 'Example'}
                   </span>
                   <p className="text-sm text-slate-500 dark:text-zinc-400 italic leading-relaxed">
-                    &ldquo;{item.example}&rdquo;
+                    &ldquo;{(meaningTab[item.id] ?? 'en') === 'hi' && item.hindiExample
+                      ? item.hindiExample
+                      : item.example}&rdquo;
                   </p>
                 </div>
               </div>

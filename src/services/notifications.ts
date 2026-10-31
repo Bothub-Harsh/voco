@@ -40,6 +40,16 @@ interface VocoSchedulerPlugin {
   openExactAlarmSettings(): Promise<{ opened: boolean }>;
   openBatterySettings(): Promise<{ opened: boolean }>;
   openAppSettings(): Promise<{ opened: boolean }>;
+  // TTS
+  speak(options: { text: string; lang?: string }): Promise<{ success: boolean }>;
+  stopSpeech(): Promise<{ success: boolean }>;
+  // Native file export
+  exportBackup(options: { fileName: string; content: string }): Promise<{
+    success: boolean;
+    filePath?: string;
+    message?: string;
+    error?: string;
+  }>;
 }
 
 export const VocoScheduler = registerPlugin<VocoSchedulerPlugin>('VocoNotificationScheduler');

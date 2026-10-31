@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { Download, Upload, Info, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { exportBackupJson, importBackupJson } from '../db/indexedDb';
+import { VocoScheduler } from '../services/notifications';
 
 interface BackupControlsProps {
   totalWords: number;
@@ -17,29 +19,89 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   const [showInfo, setShowInfo] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExport = async () => {
+    setIsExporting(true);
+    setExportSuccess(null);
+    setExportError(null);
+
     try {
       const jsonContent = await exportBackupJson();
-      const blob = new Blob([jsonContent], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
       const now = new Date().toISOString().split('T')[0];
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `voco-vocabulary-backup-${now}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      onStatusChange('Backup exported to JSON file');
+      const fileName = `Voco_Backup_${now}.json`;
+
+      if (Capacitor.isNativePlatform()) {
+        // ── Android native export via plugin ──
+        try {
+          const result = await (VocoScheduler as unknown as {
+            exportBackup: (opts: { fileName: string; content: string }) => Promise<{
+              success: boolean; filePath?: string; message?: string; error?: string;
+            }>;
+          }).exportBackup({ fileName, content: jsonContent });
+
+          if (result?.success) {
+            const msg = result.message || `Saved to Downloads: ${fileName}`;
+            setExportSuccess(msg);
+            onStatusChange(msg);
+          } else {
+            throw new Error(result?.error || 'Export failed on device.');
+          }
+        } catch (nativeErr) {
+          // Plugin method not yet available — fall through to web Blob download
+          const msg = nativeErr instanceof Error ? nativeErr.message : String(nativeErr);
+          if (msg.includes('not implemented') || msg.includes('not a function')) {
+            _webBlobDownload(jsonContent, fileName);
+            const successMsg = `Backup downloaded: ${fileName}`;
+            setExportSuccess(successMsg);
+            onStatusChange(successMsg);
+          } else {
+            throw nativeErr;
+          }
+        }
+      } else {
+        // ── Web browser export ──
+        _webBlobDownload(jsonContent, fileName);
+        const successMsg = `Backup exported: ${fileName}`;
+        setExportSuccess(successMsg);
+        onStatusChange(successMsg);
+      }
     } catch (err) {
-      onStatusChange('Failed to export backup: ' + (err instanceof Error ? err.message : String(err)), true);
+      const msg = 'Export failed: ' + (err instanceof Error ? err.message : String(err));
+      setExportError(msg);
+      onStatusChange(msg, true);
+    } finally {
+      setIsExporting(false);
     }
   };
+
+  function _webBlobDownload(content: string, filename: string) {
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Defer revoke so the download starts
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Ask for user confirmation before restoring/merging backup data
+    const confirmed = window.confirm(
+      'Are you sure you want to import this vocabulary backup? Valid words will be safely merged into your vocabulary without overwriting or losing existing words.'
+    );
+    if (!confirmed) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     setImportSummary(null);
     setImportError(null);
@@ -107,12 +169,12 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           <button
             type="button"
             onClick={handleExport}
-            disabled={totalWords === 0}
+            disabled={totalWords === 0 || isExporting}
             className="inline-flex items-center px-3.5 py-2 border border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-850 active:bg-slate-100 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all"
             title={totalWords === 0 ? 'Save at least one word to export' : 'Download JSON backup'}
           >
             <Download className="w-3.5 h-3.5 mr-1.5 text-[#6554F5]" />
-            <span>Export</span>
+            <span>{isExporting ? 'Exporting…' : 'Export'}</span>
           </button>
 
           <input
@@ -140,8 +202,8 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
         <div className="mt-3 p-3.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-[11px] text-slate-600 dark:text-zinc-300 leading-relaxed">
           <p className="font-semibold text-slate-700 dark:text-zinc-100 mb-1">About your vocabulary data</p>
           <p>
-            Your words are stored locally in your browser's IndexedDB. They survive page refreshes, browser closure, and restarts.
-            However, clearing your browser's site data will delete them. Export backups regularly to keep your vocabulary safe.
+            Your words are stored locally in your browser&apos;s IndexedDB. They survive page refreshes, browser closure, and restarts.
+            However, clearing your browser&apos;s site data will delete them. Export backups regularly to keep your vocabulary safe.
             Local data does not sync between browsers or devices automatically.
           </p>
           <button
@@ -150,6 +212,40 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
             className="mt-2 text-[#6554F5] dark:text-[#6554F5] hover:underline font-semibold"
           >
             Got it
+          </button>
+        </div>
+      )}
+
+      {/* Export success */}
+      {exportSuccess && (
+        <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{exportSuccess}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportSuccess(null)}
+            className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200 p-0.5 rounded"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Export error */}
+      {exportError && (
+        <div className="mt-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-xl text-xs text-rose-800 dark:text-rose-300 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            <span>{exportError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-200 p-0.5 rounded"
+          >
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
