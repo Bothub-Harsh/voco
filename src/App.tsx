@@ -6,6 +6,7 @@ import {
   saveManualWord,
   updateWord,
   deleteWord,
+  deleteWords,
   getWordById,
   seedInitialWordIfEmpty,
   requestPersistentStorage,
@@ -458,6 +459,36 @@ export function App() {
     }
   };
 
+  const handleDeleteBatch = async (ids: string[]) => {
+    try {
+      await deleteWords(ids);
+      const remainingWords = await refreshWords();
+
+      setStorageStatus({
+        state: 'saved',
+        message: `${ids.length} word${ids.length === 1 ? '' : 's'} deleted`,
+        lastSavedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+
+      if (isRemindersActive() && isNativeApp()) {
+        if (remainingWords.length > 0) {
+          syncWordsWithNativeScheduler(remainingWords).catch(() => {});
+        } else {
+          cancelAllNativeReminders().catch(() => {});
+          persistRemindersActive(false);
+          setRemindersActiveState(false);
+        }
+      }
+
+      if (activeQuizSession && ids.includes(activeQuizSession.wordId)) {
+        setActiveQuizSession(null);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Delete failed';
+      alert(`Could not delete words: ${msg}`);
+    }
+  };
+
   const handleBackupStatusChange = (message: string, isError = false) => {
     setStorageStatus({
       state: isError ? 'error' : 'saved',
@@ -567,6 +598,67 @@ export function App() {
     setTheme(next);
   };
 
+  // ─── Swipe Navigation between 3 Main Tabs ───
+  const TABS: TabId[] = ['add', 'saved', 'settings'];
+  const touchStartRef = useRef<{ x: number; y: number; time: number; valid: boolean }>({
+    x: 0,
+    y: 0,
+    time: 0,
+    valid: false,
+  });
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length > 1) {
+      touchStartRef.current.valid = false;
+      return;
+    }
+    const target = e.target as HTMLElement | null;
+    // Do not interfere with text selection, typing, buttons, sliders, or modal dialogs
+    if (target?.closest('input, textarea, select, button, [role="dialog"], .no-swipe')) {
+      touchStartRef.current.valid = false;
+      return;
+    }
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      time: Date.now(),
+      valid: true,
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current.valid) return;
+    touchStartRef.current.valid = false;
+
+    if (e.changedTouches.length === 0) return;
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+    const deltaTime = Date.now() - touchStartRef.current.time;
+
+    // Must be a deliberate horizontal swipe:
+    // 1. Horizontal distance >= 50px
+    // 2. Horizontal movement at least 1.4x larger than vertical movement (not scrolling vertically)
+    // 3. Completed within 800ms
+    if (Math.abs(deltaX) < 50 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4 || deltaTime > 800) {
+      return;
+    }
+
+    const currentIndex = TABS.indexOf(activeTab);
+
+    if (deltaX < 0) {
+      // Swiped Left (finger moved right to left) -> Go to next tab
+      if (currentIndex < TABS.length - 1) {
+        setActiveTab(TABS[currentIndex + 1]);
+      }
+    } else {
+      // Swiped Right (finger moved left to right) -> Go to previous tab
+      if (currentIndex > 0) {
+        setActiveTab(TABS[currentIndex - 1]);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-[#F8FAFC] dark:bg-black flex flex-col font-sans text-slate-800 dark:text-slate-100 safe-left safe-right transition-colors duration-200">
       <Header
@@ -577,7 +669,11 @@ export function App() {
         onToggleTheme={handleToggleTheme}
       />
 
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24">
+      <main
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 touch-pan-y"
+      >
         {/* ━━━ TAB 1: ADD WORDS ━━━ */}
         {activeTab === 'add' && (
           <div className="space-y-3">
@@ -619,6 +715,7 @@ export function App() {
             words={words}
             onOpenQuiz={(word) => openQuizForWord(word)}
             onDeleteWord={handleDeleteWord}
+            onDeleteBatch={handleDeleteBatch}
             onUpdateWord={handleUpdateWord}
             onRefreshWord={handleRefreshWord}
             refreshingWordId={refreshingWordId}

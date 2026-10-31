@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Download, Upload, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Download, Upload, FileText, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { exportBackupJson, importBackupJson } from '../db/indexedDb';
 import { VocoScheduler } from '../services/notifications';
+import { BulkAddModal } from './BulkAddModal';
 
 interface BackupControlsProps {
   totalWords: number;
@@ -16,6 +17,7 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   onStatusChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -142,16 +144,16 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
   return (
     <div className="space-y-2.5">
       {/* Action buttons */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={handleExport}
           disabled={totalWords === 0 || isExporting}
-          className="inline-flex items-center justify-center px-3.5 py-2.5 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/80 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-850 active:bg-slate-200 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
+          className="inline-flex items-center justify-center px-2.5 sm:px-3 py-2.5 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/80 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-850 active:bg-slate-200 dark:active:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
           title={totalWords === 0 ? 'Save at least one word to export' : 'Export vocabulary to JSON'}
         >
-          <Download className="w-3.5 h-3.5 mr-1.5 text-[#6554F5]" />
-          <span>{isExporting ? 'Exporting…' : 'Export'}</span>
+          <Download className="w-3.5 h-3.5 mr-1 text-[#6554F5] shrink-0" />
+          <span className="truncate">{isExporting ? 'Exporting…' : 'Export'}</span>
         </button>
 
         <input
@@ -165,11 +167,21 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="inline-flex items-center justify-center px-3.5 py-2.5 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/80 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-850 active:bg-slate-200 dark:active:bg-zinc-800 text-slate-800 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
+          className="inline-flex items-center justify-center px-2.5 sm:px-3 py-2.5 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/80 dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-850 active:bg-slate-200 dark:active:bg-zinc-800 text-slate-800 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
           title="Import vocabulary from a JSON backup file"
         >
-          <Upload className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-zinc-400" />
-          <span>Import</span>
+          <Upload className="w-3.5 h-3.5 mr-1 text-slate-500 dark:text-zinc-400 shrink-0" />
+          <span className="truncate">Import</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowBulkModal(true)}
+          className="inline-flex items-center justify-center px-2.5 sm:px-3 py-2.5 border border-indigo-200/80 dark:border-[#6554F5]/30 hover:border-[#6554F5] dark:hover:border-[#6554F5] bg-indigo-50/60 dark:bg-[#6554F5]/10 hover:bg-indigo-100/70 dark:hover:bg-[#6554F5]/20 text-indigo-700 dark:text-[#8172F8] text-xs font-semibold rounded-xl transition-all shadow-xs"
+          title="Add multiple words by typing or pasting a list"
+        >
+          <FileText className="w-3.5 h-3.5 mr-1 text-[#6554F5] shrink-0" />
+          <span className="truncate">Add Text</span>
         </button>
       </div>
 
@@ -240,6 +252,12 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           </button>
         </div>
       )}
+      {/* Bulk Add Modal */}
+      <BulkAddModal
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        onWordsAdded={onRefreshWords}
+      />
     </div>
   );
 };

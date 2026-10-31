@@ -304,6 +304,23 @@ export async function deleteWord(id: string): Promise<void> {
 }
 
 /**
+ * Deletes multiple words in a single atomic IndexedDB transaction.
+ */
+export async function deleteWords(ids: string[]): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const db = await getDB();
+  try {
+    const tx = db.transaction('words', 'readwrite');
+    for (const id of ids) {
+      await tx.store.delete(id);
+    }
+    await tx.done;
+  } catch (err) {
+    throw new Error(`Failed to delete words from IndexedDB: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Exports all saved words to a downloadable JSON string.
  */
 export async function exportBackupJson(): Promise<string> {
