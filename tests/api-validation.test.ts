@@ -4,6 +4,8 @@ import {
   validateAiQuizResponse,
   getApiBaseUrl,
   PRODUCTION_BACKEND_URL,
+  classifyError,
+  GenerationError,
 } from '../src/services/api';
 
 describe('API Input & Output Quality Validation', () => {
@@ -74,10 +76,37 @@ describe('API Input & Output Quality Validation', () => {
     ).toThrow('exactly 4 quiz options');
   });
 
+  it('separately classifies rate limits, server errors, network failures, malformed JSON, and missing fields', () => {
+    // 1. Rate limit (429)
+    const rateLimit = classifyError(new Error('Groq API rate limit (429) reached'), 'Swift');
+    expect(rateLimit.type).toBe('RATE_LIMIT');
+    expect(rateLimit.word).toBe('Swift');
+
+    // 2. Server error (5xx)
+    const serverErr = classifyError(new Error('Request failed with HTTP 503'), 'Nimble');
+    expect(serverErr.type).toBe('SERVER_ERROR');
+
+    // 3. Network failure / timeout
+    const networkErr = classifyError(new Error('Network timeout after 40s'), 'Vivid');
+    expect(networkErr.type).toBe('NETWORK_FAILURE');
+
+    // 4. Malformed JSON
+    const jsonErr = classifyError(new SyntaxError('Unexpected token in JSON at position 12'), 'Keen');
+    expect(jsonErr.type).toBe('MALFORMED_JSON');
+
+    // 5. Missing fields
+    const missingErr = classifyError(new Error('Server must provide exactly 4 quiz options'), 'Sage');
+    expect(missingErr.type).toBe('MISSING_FIELDS');
+
+    // 6. Direct GenerationError
+    const genErr = classifyError(new GenerationError('RATE_LIMIT', 'Rate limit on model', 'Echo'));
+    expect(genErr.type).toBe('RATE_LIMIT');
+    expect(genErr.word).toBe('Echo');
+  });
+
   it('resolves correct API base URL', () => {
     const url = getApiBaseUrl();
     expect(typeof url).toBe('string');
-    // In our test environment with VITE_API_URL set in .env:
     expect(url).toBe(PRODUCTION_BACKEND_URL);
   });
 });

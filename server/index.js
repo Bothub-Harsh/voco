@@ -14,16 +14,18 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const rawEnvModel = process.env.GROQ_MODEL?.trim();
+const DEFAULT_MODEL = rawEnvModel || 'openai/gpt-oss-120b';
 
-// Active Groq candidate models in fallback order
+// Active Groq candidate models in fallback order (excluding decommissioned models)
 const CANDIDATE_MODELS = [
   DEFAULT_MODEL,
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'qwen/qwen3.8-27b',
   'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'gemma2-9b-it',
-  'mixtral-8x7b-32768'
-].filter((m, i, arr) => arr.indexOf(m) === i && !m.startsWith('openai/') && !m.startsWith('qwen/'));
+  'llama-3.1-8b-instant'
+].filter((m, i, arr) => arr.indexOf(m) === i && !m.includes('mixtral'));
 
 function cleanJsonContent(str) {
   if (!str || typeof str !== 'string') return '';
@@ -291,6 +293,166 @@ app.post('/api/vocabulary/generate', handleVocabularyGeneration);
 app.post('/api/vocabulary/refresh', (req, res) => {
   req.body.isRefresh = true;
   return handleVocabularyGeneration(req, res);
+});
+
+// Endpoint to generate definitions for a batch of up to 3 words
+app.post('/api/vocabulary/generate-batch', async (req, res) => {
+  try {
+    const { words } = req.body;
+    if (!Array.isArray(words) || words.length === 0) {
+      return res.status(400).json({ error: 'Please provide an array of words.' });
+    }
+
+    const cleanWords = words
+      .map((w) => (typeof w === 'string' ? w.trim() : ''))
+      .filter((w) => w.length >= 2 && w.length <= 50)
+      .slice(0, 3); // Strictly 3 words per batch
+
+    if (cleanWords.length === 0) {
+      return res.status(400).json({ error: 'No valid words provided in batch.' });
+    }
+
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey || apiKey === 'your_groq_api_key_here') {
+      return res.status(503).json({
+        error: 'Groq API key is not configured on the server.',
+      });
+    }
+
+    const prompt = `You are an expert English vocabulary tutor and professional quiz creator.
+Target words to define: ${JSON.stringify(cleanWords)}
+
+For EACH of the ${cleanWords.length} target words, generate a beginner-friendly definition entry:
+1. "word": The target English word with proper capitalization.
+2. "meaning": Simple, clear explanation in everyday English. Keep it concise. Wrap 2 to 4 key, meaningful phrases in Markdown bold (**phrase**). Do NOT bold the entire sentence or the word itself.
+3. "hindiMeaning": Accurate, natural Hindi translation with 2 to 3 key words wrapped in Markdown bold (**शब्द**).
+4. "example": ONE natural example sentence showing everyday use, in plain text (no bold).
+5. "options": Exactly 4 balanced, distinct multiple-choice options in plain text (NO bold asterisks), very similar in length (within 3-5 words). One correct meaning, three intelligent distractors.
+6. "correctIndex": integer 0, 1, 2, or 3 pointing to the correct option.
+
+Respond ONLY with valid JSON matching this schema:
+{
+  "items": [
+    {
+      "word": "${cleanWords[0]}",
+      "meaning": "simple definition with **2-4 key phrases** in bold",
+      "example": "one natural example sentence in plain text",
+      "hindiMeaning": "सरल हिंदी अर्थ **2-3 महत्वपूर्ण शब्दों** के साथ",
+      "options": ["option 1", "option 2", "option 3", "option 4"],
+      "correctIndex": 1
+    }
+  ]
+}`;
+
+    let lastError = null;
+    let successfulItems = null;
+
+    for (const model of CANDIDATE_MODELS) {
+      try {
+        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a vocabulary tutor for beginners. Output ONLY a valid JSON object with "items" array containing word objects. No markdown code blocks, no commentary.',
+              },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.3,
+            response_format: { type: 'json_object' },
+          }),
+        });
+
+        if (!groqResponse.ok) {
+          const errorText = await groqResponse.text();
+          let errorMessage = `Groq API returned HTTP ${groqResponse.status}`;
+          try {
+            const errJson = JSON.parse(errorText);
+            if (errJson.error?.message) errorMessage = errJson.error.message;
+          } catch {}
+
+          if (groqResponse.status === 401) {
+            return res.status(401).json({ error: 'Invalid Groq API key.', details: errorMessage });
+          }
+          if (groqResponse.status === 429) {
+            lastError = { status: 429, message: `Rate limit on ${model}: ${errorMessage}` };
+            continue;
+          }
+          if (groqResponse.status === 404 || errorMessage.includes('does not exist') || errorMessage.includes('decommissioned')) {
+            lastError = { status: 404, message: errorMessage };
+            continue;
+          }
+          lastError = { status: groqResponse.status, message: errorMessage };
+          continue;
+        }
+
+        const data = await groqResponse.json();
+        const rawContent = data.choices?.[0]?.message?.content;
+        if (!rawContent) {
+          lastError = { status: 502, message: 'Empty response received from Groq AI' };
+          continue;
+        }
+
+        const cleaned = cleanJsonContent(rawContent);
+        let parsed;
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch (jsonErr) {
+          lastError = { status: 502, message: 'Malformed JSON from AI: ' + jsonErr.message };
+          continue;
+        }
+
+        const rawList = Array.isArray(parsed.items)
+          ? parsed.items
+          : Array.isArray(parsed)
+          ? parsed
+          : Object.values(parsed).find((v) => Array.isArray(v)) || [];
+
+        if (!Array.isArray(rawList) || rawList.length === 0) {
+          lastError = { status: 502, message: 'AI response did not contain items array' };
+          continue;
+        }
+
+        const validatedList = [];
+        for (const rawItem of rawList) {
+          try {
+            const valid = validateVocabularyPayload(rawItem);
+            validatedList.push(valid);
+          } catch (valErr) {
+            console.warn('Skipping item failing validation:', rawItem?.word, valErr?.message);
+          }
+        }
+
+        if (validatedList.length > 0) {
+          successfulItems = validatedList;
+          break; // Success!
+        }
+      } catch (loopErr) {
+        lastError = { status: 500, message: loopErr instanceof Error ? loopErr.message : String(loopErr) };
+      }
+    }
+
+    if (!successfulItems || successfulItems.length === 0) {
+      return res.status(lastError?.status || 502).json({
+        error: 'Failed to generate vocabulary batch from Groq AI.',
+        details: lastError?.message || 'Could not validate generated word items.',
+      });
+    }
+
+    return res.json({ items: successfulItems });
+  } catch (err) {
+    return res.status(500).json({
+      error: 'An unexpected error occurred while processing batch.',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
 });
 
 // Endpoint to generate intelligent, balanced quiz distractors for a word

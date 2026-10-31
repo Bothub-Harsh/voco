@@ -47,3 +47,17 @@ export interface StorageStatus {
   message: string;
   lastSavedAt?: string;
 }
+
+export type GenerationErrorType =
+  | 'RATE_LIMIT'       // HTTP 429
+  | 'SERVER_ERROR'     // HTTP 5xx
+  | 'NETWORK_FAILURE'  // Network timeout (30-45s) or drop
+  | 'MALFORMED_JSON'   // AI returned unparseable text
+  | 'MISSING_FIELDS';  // Response missing required definition/options
+
+export interface BulkWordFailure {
+  word: string;
+  type: GenerationErrorType;
+  reason: string;
+}
+

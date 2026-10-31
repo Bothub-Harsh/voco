@@ -285,16 +285,16 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
 
       {/* Error banner with retry */}
       {error && !isLoading && (
-        <div className="mt-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-xl flex items-center justify-between gap-2 text-rose-800 dark:text-rose-300">
-          <div className="flex items-center space-x-2 min-w-0">
-            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-            <span className="text-xs truncate">{error}</span>
+        <div className="mt-3 p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60 rounded-xl flex items-start justify-between gap-2 text-rose-800 dark:text-rose-300">
+          <div className="flex items-start space-x-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+            <span className="text-xs break-words leading-snug">{error}</span>
           </div>
           {lastFailedWord && entryMode === 'ai' && (
             <button
               type="button"
               onClick={onRetry}
-              className="inline-flex items-center px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-xs"
+              className="inline-flex items-center px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 shadow-xs mt-0.5"
             >
               <RotateCcw className="w-3 h-3 mr-1" />
               <span>Retry</span>

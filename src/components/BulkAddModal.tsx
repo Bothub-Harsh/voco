@@ -1,8 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Loader2, Sparkles, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
-import { generateVocabularyFromAI } from '../services/api';
+import {
+  X,
+  Loader2,
+  Sparkles,
+  AlertCircle,
+  CheckCircle2,
+  RotateCcw,
+  WifiOff,
+  Server,
+  Clock,
+  FileCode,
+  FileQuestion,
+} from 'lucide-react';
+import { generateVocabularyBatch } from '../services/api';
 import { saveWord, getAllWords } from '../db/indexedDb';
+import type { BulkWordFailure, GenerationErrorType } from '../types';
 
 interface BulkAddModalProps {
   isOpen: boolean;
@@ -10,10 +23,46 @@ interface BulkAddModalProps {
   onWordsAdded: () => Promise<unknown>;
 }
 
-interface FailedWordItem {
-  word: string;
-  reason: string;
-}
+const ERROR_BADGE_CONFIG: Record<
+  GenerationErrorType,
+  { label: string; bg: string; text: string; border: string; icon: React.FC<{ className?: string }> }
+> = {
+  RATE_LIMIT: {
+    label: 'Rate Limit (429)',
+    bg: 'bg-amber-50 dark:bg-amber-950/40',
+    text: 'text-amber-700 dark:text-amber-300',
+    border: 'border-amber-200 dark:border-amber-800/60',
+    icon: Clock,
+  },
+  SERVER_ERROR: {
+    label: 'Server Error (5xx)',
+    bg: 'bg-rose-50 dark:bg-rose-950/40',
+    text: 'text-rose-700 dark:text-rose-300',
+    border: 'border-rose-200 dark:border-rose-800/60',
+    icon: Server,
+  },
+  NETWORK_FAILURE: {
+    label: 'Network Timeout / Drop',
+    bg: 'bg-sky-50 dark:bg-sky-950/40',
+    text: 'text-sky-700 dark:text-sky-300',
+    border: 'border-sky-200 dark:border-sky-800/60',
+    icon: WifiOff,
+  },
+  MALFORMED_JSON: {
+    label: 'Malformed JSON',
+    bg: 'bg-purple-50 dark:bg-purple-950/40',
+    text: 'text-purple-700 dark:text-purple-300',
+    border: 'border-purple-200 dark:border-purple-800/60',
+    icon: FileCode,
+  },
+  MISSING_FIELDS: {
+    label: 'Missing Fields',
+    bg: 'bg-orange-50 dark:bg-orange-950/40',
+    text: 'text-orange-700 dark:text-orange-300',
+    border: 'border-orange-200 dark:border-orange-800/60',
+    icon: FileQuestion,
+  },
+};
 
 export const BulkAddModal: React.FC<BulkAddModalProps> = ({
   isOpen,
@@ -22,8 +71,15 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentProgress, setCurrentProgress] = useState<{ current: number; total: number; word: string } | null>(null);
-  const [failedItems, setFailedItems] = useState<FailedWordItem[]>([]);
+  const [currentProgress, setCurrentProgress] = useState<{
+    processed: number;
+    total: number;
+    currentBatchWords: string[];
+    batchIndex: number;
+    totalBatches: number;
+  } | null>(null);
+  const [successfulWords, setSuccessfulWords] = useState<string[]>([]);
+  const [failedWords, setFailedWords] = useState<BulkWordFailure[]>([]);
   const [successResult, setSuccessResult] = useState<{ added: number; skipped: number; total: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -67,7 +123,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
       }
     }
 
-    // 3. Filter out words that already exist in IndexedDB (avoid duplicates & never overwrite)
+    // 3. Filter out words that already exist in IndexedDB (never duplicate or overwrite)
     const existingWords = await getAllWords();
     const existingLowerSet = new Set(existingWords.map((w) => w.wordLower || w.word.toLowerCase()));
 
@@ -91,51 +147,68 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
       return;
     }
 
-    setIsProcessing(true);
-    let addedCount = 0;
-    const newFailures: FailedWordItem[] = [];
+    // 4. Divide into small sequential batches of 3 words per batch
+    const BATCH_SIZE = 3;
+    const batches: string[][] = [];
+    for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
+      batches.push(toProcess.slice(i, i + BATCH_SIZE));
+    }
 
-    // 4. Process words sequentially in controlled small batches with rate-limit pacing
-    for (let i = 0; i < toProcess.length; i++) {
-      const targetWord = toProcess[i];
+    setIsProcessing(true);
+    let totalProcessedCount = 0;
+    const accumulatedSuccess: string[] = [...successfulWords];
+    const newFailures: BulkWordFailure[] = [];
+
+    // Process each 3-word batch sequentially with 1.5s delay
+    for (let b = 0; b < batches.length; b++) {
+      const currentBatch = batches[b];
+
       setCurrentProgress({
-        current: i + 1,
+        processed: totalProcessedCount,
         total: toProcess.length,
-        word: targetWord,
+        currentBatchWords: currentBatch,
+        batchIndex: b + 1,
+        totalBatches: batches.length,
       });
 
-      try {
-        // Validate and generate via backend Groq proxy
-        const generated = await generateVocabularyFromAI(targetWord);
-        // Persist to IndexedDB immediately so progress is preserved
-        await saveWord(generated);
-        addedCount++;
-        // Incrementally refresh UI word list
-        await onWordsAdded();
-      } catch (err) {
-        const rawMessage = err instanceof Error ? err.message : String(err);
-        let readableReason = 'AI generation failed';
-        if (rawMessage.includes('rate limit') || rawMessage.includes('429')) {
-          readableReason = 'Rate limit reached — retry in a moment';
-        } else if (rawMessage.includes('internet') || rawMessage.includes('connect')) {
-          readableReason = 'Network timeout / connection error';
-        } else if (rawMessage.includes('short') || rawMessage.includes('letters')) {
-          readableReason = 'Word format invalid (too short)';
-        } else if (rawMessage.includes('server')) {
-          readableReason = 'Backend server busy';
-        } else {
-          readableReason = rawMessage.slice(0, 45);
-        }
+      // Call API for this 3-word batch with 40s timeout & 3 retries with backoff
+      const batchResult = await generateVocabularyBatch(currentBatch);
 
-        newFailures.push({
-          word: targetWord,
-          reason: readableReason,
-        });
+      // Save every successfully generated word immediately to IndexedDB
+      for (const item of batchResult.successful) {
+        try {
+          await saveWord(item);
+          accumulatedSuccess.push(item.word);
+          totalProcessedCount++;
+          setSuccessfulWords([...accumulatedSuccess]);
+          // Refresh UI word count immediately
+          await onWordsAdded();
+        } catch (dbErr) {
+          batchResult.failed.push({
+            word: item.word,
+            type: 'MISSING_FIELDS',
+            reason: `Database error: ${dbErr instanceof Error ? dbErr.message : 'Could not save'}`,
+          });
+        }
       }
 
-      // Safe rate-limit pause between consecutive requests (~1100ms)
-      if (i < toProcess.length - 1) {
-        await new Promise((res) => setTimeout(res, 1100));
+      // Record any failures from this batch
+      if (batchResult.failed.length > 0) {
+        newFailures.push(...batchResult.failed);
+        totalProcessedCount += batchResult.failed.length;
+      }
+
+      setCurrentProgress({
+        processed: totalProcessedCount,
+        total: toProcess.length,
+        currentBatchWords: currentBatch,
+        batchIndex: b + 1,
+        totalBatches: batches.length,
+      });
+
+      // 1–2 second delay between requests to protect Groq RPM/TPM limits (1500ms)
+      if (b < batches.length - 1) {
+        await new Promise((res) => setTimeout(res, 1500));
       }
     }
 
@@ -143,28 +216,29 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
     setCurrentProgress(null);
 
     if (newFailures.length > 0) {
-      setFailedItems(newFailures);
-      // Pre-fill input text with only the failed words so user can review/edit
+      setFailedWords(newFailures);
+      // Pre-fill input text with ONLY the failed words so user can review or retry
       setInputText(newFailures.map((f) => f.word).join('\n'));
       setErrorMsg(
-        `Added ${addedCount} of ${toProcess.length} words. Generation failed for ${newFailures.length} word${
+        `Added ${accumulatedSuccess.length} of ${toProcess.length} words. Generation failed for ${newFailures.length} word${
           newFailures.length === 1 ? '' : 's'
         }.`
       );
     } else {
-      setFailedItems([]);
+      setFailedWords([]);
       setInputText('');
       setSuccessResult({
-        added: addedCount,
+        added: accumulatedSuccess.length,
         skipped: skippedCount,
         total: toProcess.length,
       });
     }
   };
 
+  // Retries ONLY the failed words; never regenerates successful words
   const handleRetryFailed = () => {
-    if (failedItems.length === 0) return;
-    const wordsToRetry = failedItems.map((f) => f.word);
+    if (failedWords.length === 0) return;
+    const wordsToRetry = failedWords.map((f) => f.word);
     handleStartProcessing(wordsToRetry);
   };
 
@@ -172,7 +246,8 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
     if (isProcessing) return;
     setInputText('');
     setSuccessResult(null);
-    setFailedItems([]);
+    setFailedWords([]);
+    setSuccessfulWords([]);
     setErrorMsg(null);
     setCurrentProgress(null);
     onClose();
@@ -193,10 +268,10 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                Add Multiple Words
+                Add Multiple Words (19–100+)
               </h3>
               <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                Bulk add with automatic bilingual meanings
+                Processed in batches of 3 words with rate-limit protection
               </p>
             </div>
           </div>
@@ -222,7 +297,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
                   All {successResult.added} words added successfully!
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
-                  Each word is saved with simple English &amp; Hindi meanings, examples, and practice quizzes.
+                  Each word is saved to IndexedDB with English &amp; Hindi meanings, examples, and practice quizzes.
                   {successResult.skipped > 0 && ` (${successResult.skipped} duplicate words skipped).`}
                 </p>
               </div>
@@ -237,68 +312,94 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
             </div>
           )}
 
-          {/* Failed Words Breakdown List */}
-          {failedItems.length > 0 && (
-            <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 space-y-2">
-              <div className="flex items-center justify-between text-xs font-semibold text-rose-800 dark:text-rose-300">
-                <span>Failed Words ({failedItems.length}):</span>
-                <span className="text-[10px] text-rose-600 dark:text-rose-400">Click Retry below</span>
+          {/* Failed Words Breakdown with Separate Category Badges */}
+          {failedWords.length > 0 && (
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                <span>Failed Words ({failedWords.length}):</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400">Click &ldquo;Retry Failed Words&rdquo; below</span>
               </div>
-              <div className="max-h-28 overflow-y-auto space-y-1 text-[11px] pr-1">
-                {failedItems.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between py-1 px-2 rounded-lg bg-white/70 dark:bg-zinc-900/60 border border-rose-100 dark:border-rose-900/30"
-                  >
-                    <span className="font-bold text-slate-800 dark:text-zinc-200">{item.word}</span>
-                    <span className="text-rose-600 dark:text-rose-400 italic text-[10px]">{item.reason}</span>
-                  </div>
-                ))}
+              <div className="max-h-36 overflow-y-auto space-y-1.5 text-[11px] pr-1">
+                {failedWords.map((item, idx) => {
+                  const cfg = ERROR_BADGE_CONFIG[item.type] || ERROR_BADGE_CONFIG.MISSING_FIELDS;
+                  const Icon = cfg.icon;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="p-2 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 space-y-1 shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 dark:text-zinc-100">{item.word}</span>
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                        >
+                          <Icon className="w-2.5 h-2.5 mr-1 shrink-0" />
+                          <span>{cfg.label}</span>
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-zinc-400 italic leading-snug">
+                        {item.reason}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Multiline Textarea */}
           <div className="space-y-1.5">
-            <label
-              htmlFor="bulk-words-input"
-              className="block text-xs font-semibold text-slate-700 dark:text-zinc-300"
-            >
-              Word List <span className="font-normal text-slate-400 dark:text-zinc-500">(One word per line)</span>
-            </label>
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300">
+              <label htmlFor="bulk-words-input">
+                Word List <span className="font-normal text-slate-400 dark:text-zinc-500">(One word per line)</span>
+              </label>
+              {successfulWords.length > 0 && (
+                <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                  {successfulWords.length} already saved
+                </span>
+              )}
+            </div>
             <textarea
               id="bulk-words-input"
               rows={7}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isProcessing}
-              placeholder={`Enter one word per line...\n\nExample:\nRough\nFood\nFriends\nChair\nBooks\nHabits`}
+              placeholder={`Enter 19–100 words (one per line)...\n\nExample:\nRough\nFood\nFriends\nChair\nBooks\nHabits`}
               className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-60 font-mono resize-none"
             />
           </div>
 
-          {/* Progress Display: "Generating meanings: 5 of 20" */}
+          {/* Progress Display: "Generating meanings: 6 of 20" */}
           {isProcessing && currentProgress && (
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 space-y-2">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 space-y-2.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+                <span className="font-semibold text-slate-800 dark:text-zinc-100 flex items-center gap-1.5">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6554F5]" />
-                  Generating meanings: {currentProgress.current} of {currentProgress.total}
+                  Generating meanings: {currentProgress.processed} of {currentProgress.total}
                 </span>
-                <span className="text-slate-400 dark:text-zinc-400 font-mono text-[11px]">
-                  {Math.round((currentProgress.current / currentProgress.total) * 100)}%
+                <span className="text-slate-400 dark:text-zinc-400 font-mono text-[11px] font-bold">
+                  {Math.round((currentProgress.processed / currentProgress.total) * 100)}%
                 </span>
               </div>
-              {/* Progress Bar */}
-              <div className="w-full bg-slate-200 dark:bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+
+              {/* Animated Progress Bar */}
+              <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
                 <div
                   className="bg-[#6554F5] h-full transition-all duration-300"
-                  style={{ width: `${(currentProgress.current / currentProgress.total) * 100}%` }}
+                  style={{ width: `${Math.max(4, (currentProgress.processed / currentProgress.total) * 100)}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-zinc-400 truncate">
-                Processing &ldquo;<strong className="text-slate-700 dark:text-zinc-200">{currentProgress.word}</strong>&rdquo;...
-              </p>
+
+              <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-zinc-400">
+                <span>
+                  Batch {currentProgress.batchIndex} of {currentProgress.totalBatches} (3 words)
+                </span>
+                <span className="truncate max-w-[180px] font-medium text-slate-600 dark:text-zinc-300">
+                  {currentProgress.currentBatchWords.join(', ')}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -314,7 +415,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
             {successResult ? 'Done' : 'Cancel'}
           </button>
 
-          {failedItems.length > 0 ? (
+          {failedWords.length > 0 ? (
             <button
               type="button"
               onClick={handleRetryFailed}
@@ -322,7 +423,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
               className="inline-flex items-center px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-xs font-semibold transition-all shadow-xs"
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-              <span>Retry Failed Words ({failedItems.length})</span>
+              <span>Retry Failed Words ({failedWords.length})</span>
             </button>
           ) : (
             <button
