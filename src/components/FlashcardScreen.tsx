@@ -222,21 +222,21 @@ const FrontFace: React.FC<FrontFaceProps> = ({
           Do you remember this word?
         </p>
 
-        {/* Remember / Don't Remember buttons */}
+        {/* Meaning / Remember buttons */}
         <div className="flex gap-3 w-full">
           <button
             type="button"
             onClick={onDontRemember}
-            className="flex-1 py-3 rounded-2xl border-2 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 font-bold text-sm bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all active:scale-95"
+            className="flex-1 py-3 rounded-2xl border-2 border-slate-300 dark:border-[#3E4452] text-slate-800 dark:text-[#F1F1F5] font-bold text-sm bg-white dark:bg-[#252834] hover:bg-slate-50 dark:hover:bg-[#2E3240] transition-all active:scale-95 shadow-sm"
           >
-            😅 Don't Remember
+            Meaning
           </button>
           <button
             type="button"
             onClick={onRemember}
-            className="flex-1 py-3 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95"
+            className="flex-1 py-3 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95 shadow-sm"
           >
-            ✅ Remember
+            Remember
           </button>
         </div>
       </>

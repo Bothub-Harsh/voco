@@ -619,12 +619,25 @@ export async function checkStoryCooldown(): Promise<number> {
   }
 }
 
+export interface ValidationRecord {
+  word: string;
+  status: 'used' | 'missing';
+  sentence?: string | null;
+  expectedMeaning?: string;
+}
+
 export interface StoryGenerationResult {
   title: string;
   story: string;
-  wordsUsed: { word: string; meaning: string }[];
+  wordsUsed: { word: string; meaning: string; hindiMeaning?: string }[];
   wordsUsedCount: number;
   totalWords: number;
+  validationSummary?: {
+    totalChecked: number;
+    successfullyUsed: number;
+    missing: string[];
+    records: ValidationRecord[];
+  } | null;
 }
 
 /**
@@ -632,7 +645,7 @@ export interface StoryGenerationResult {
  * Multi-stage generation supports 5 to 150+ vocabulary words without context or token overflow.
  */
 export async function generateStoryFromAIStream(
-  words: { word: string; meaning: string }[],
+  words: { word: string; meaning: string; hindiMeaning?: string }[],
   onProgress: (percent: number, status: string) => void
 ): Promise<StoryGenerationResult> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -706,6 +719,7 @@ export async function generateStoryFromAIStream(
               wordsUsed: Array.isArray(event.wordsUsed) ? event.wordsUsed : words,
               wordsUsedCount: typeof event.wordsUsedCount === 'number' ? event.wordsUsedCount : words.length,
               totalWords: typeof event.totalWords === 'number' ? event.totalWords : words.length,
+              validationSummary: event.validationSummary ?? null,
             };
           } else if (event.type === 'error') {
             streamError = event.message || 'Error occurred during story generation.';
@@ -736,10 +750,10 @@ export async function generateStoryFromAIStream(
 
 /**
  * Calls the backend Groq proxy to generate a connected story using all saved vocabulary words.
- * Returns { title, story, wordsUsed, wordsUsedCount, totalWords }.
+ * Returns { title, story, wordsUsed, wordsUsedCount, totalWords, validationSummary }.
  */
 export async function generateStoryFromAI(
-  words: { word: string; meaning: string }[]
+  words: { word: string; meaning: string; hindiMeaning?: string }[]
 ): Promise<StoryGenerationResult> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new Error('No internet connection. Please check your network.');
@@ -789,5 +803,6 @@ export async function generateStoryFromAI(
     wordsUsed: Array.isArray(data.wordsUsed) ? data.wordsUsed : words,
     wordsUsedCount: typeof data.wordsUsedCount === 'number' ? data.wordsUsedCount : (data.wordsUsed?.length || words.length),
     totalWords: typeof data.totalWords === 'number' ? data.totalWords : words.length,
+    validationSummary: data.validationSummary ?? null,
   };
 }

@@ -326,7 +326,11 @@ export function App() {
     setStoryProgressPercent(0);
     setStoryProgressStatus('Preparing your vocabulary...');
 
-    const wordPayload = wordsRef.current.map((w) => ({ word: w.word, meaning: w.meaning }));
+    const wordPayload = wordsRef.current.map((w) => ({ 
+      word: w.word, 
+      meaning: w.meaning,
+      hindiMeaning: w.hindiMeaning 
+    }));
     try {
       const result = await generateStoryFromAIStream(wordPayload, (percent, status) => {
         setStoryProgressPercent(percent);

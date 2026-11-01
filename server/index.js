@@ -647,15 +647,18 @@ async function callGroqWithRetry(apiKey, messages, { maxTokens = 2000, temperatu
 
 /**
  * High-quality multi-stage story generator supporting 5 to 200+ vocabulary words.
- * Implements internal planning, character consistency, natural emoji use,
- * and contextual vocabulary integration modeled after "The Journey of a Resilient Young Entrepreneur".
+ * Implements internal planning, character consistency, natural emoji use, Hindi meaning support,
+ * vocabulary validation summary, and contextual vocabulary integration modeled after
+ * "The Journey of a Resilient Young Entrepreneur".
  */
 async function executeMultiStageStoryGeneration(apiKey, words, onProgress) {
+  // Stage 0: Clean and normalise input — support { word, meaning, hindiMeaning? }
   const cleanWords = words
     .filter((w) => w && w.word)
     .map((w) => ({
       word: String(w.word).trim(),
       meaning: String(w.meaning || '').trim(),
+      hindiMeaning: w.hindiMeaning ? String(w.hindiMeaning).trim() : undefined,
     }));
 
   if (cleanWords.length === 0) {
@@ -663,55 +666,85 @@ async function executeMultiStageStoryGeneration(apiKey, words, onProgress) {
   }
 
   const totalWords = cleanWords.length;
-  onProgress(5, 'Preparing saved vocabulary...');
+  onProgress(3, 'Analyzing your vocabulary words...');
 
-  // Group words into batches of 15-20 words per scene to prevent context overflow
+  // Stage 1: Vocabulary analysis — classify each word by likely part of speech
+  onProgress(8, 'Building vocabulary reference map...');
+
+  function classifyWordPos(meaning) {
+    const m = meaning.toLowerCase();
+    if (/\ba person who\b|\bsomeone who\b|\bone who\b/.test(m)) return 'noun/person';
+    if (/^to |\bthe act of\b|\bprocess of\b/.test(m)) return 'verb';
+    if (/\bfull of\b|\bhaving the quality\b|\bcharacterized by\b/.test(m)) return 'adjective';
+    if (/\bin a .+ manner\b|\bthe state of being\b/.test(m)) return 'adverb/noun';
+    return 'general';
+  }
+
+  // Build vocabulary reference map: word → { meaning, hindiMeaning, pos }
+  const vocabRefMap = new Map();
+  for (const w of cleanWords) {
+    vocabRefMap.set(w.word.toLowerCase(), {
+      meaning: w.meaning,
+      hindiMeaning: w.hindiMeaning,
+      pos: classifyWordPos(w.meaning),
+    });
+  }
+
+  // Group words into chunks of 12–20 per scene
   const CHUNK_SIZE = Math.min(20, Math.max(12, Math.ceil(totalWords / Math.ceil(totalWords / 18))));
   const chunks = [];
   for (let i = 0; i < cleanWords.length; i += CHUNK_SIZE) {
     chunks.push(cleanWords.slice(i, i + CHUNK_SIZE));
   }
-
   const numChunks = chunks.length;
-  onProgress(10, 'Planning storyline, characters & scenes...');
 
-  // Stage 1: Architectural Story Planning
-  // Plan overarching story premise, characters, setting, and scene breakdown
-  const sampleWordsPreview = cleanWords
-    .slice(0, Math.min(25, cleanWords.length))
-    .map((w) => `"${w.word}" (${w.meaning})`)
-    .join(', ');
+  // Stage 2: Story planning — rich JSON blueprint
+  onProgress(13, 'Planning story structure, characters & scenes...');
 
-  const planPrompt = `You are an acclaimed creative author designing a story for English vocabulary learners.
-Benchmark style: "The Journey of a Resilient Young Entrepreneur" — inspiring, relatable, humorous, heartfelt.
+  const fullWordList = cleanWords
+    .map((w, idx) => `${idx + 1}. "${w.word}" — ${w.meaning}${w.hindiMeaning ? ` (Hindi: ${w.hindiMeaning})` : ''}`)
+    .join('\n');
 
-Total Vocabulary Words to include across the full story: ${totalWords}.
-Sample words include: ${sampleWordsPreview}.
+  const planPrompt = `You are an acclaimed creative writing expert designing a vocabulary learning story.
 
-Task: Create an architectural story plan for a continuous story spanning ${numChunks} connected scene${numChunks > 1 ? 's' : ''}:
-1. Story Title (catchy, 3-6 words, creative, NO asterisks).
-2. Main Character (relatable protagonist name, their passion or profession, personality trait).
-3. Setting (a vibrant, descriptive setting where events unfold naturally).
-4. Central Conflict / Quest (a challenge that tests their perseverance, trust, or creativity).
-5. Outline for ${numChunks} scene${numChunks > 1 ? 's' : ''} describing the progression from beginning to a meaningful resolution.
+Reference quality standard: "The Journey of a Resilient Young Entrepreneur" — inspiring, relatable, humorous, heartfelt, natural dialogue, real-life problems.
 
-Respond ONLY with valid JSON:
+VOCABULARY WORDS TO INCLUDE (${totalWords} total):
+${fullWordList}
+
+Your task: Create a detailed story blueprint.
+
+STRICT RULES:
+1. Choose protagonist and supporting character names that are NORMAL human names (e.g. Arjun, Priya, Sam, Mei). Names must NOT be any of the vocabulary words.
+2. Every vocabulary word must be assigned to a specific scene based on its ACTUAL MEANING and appropriate context.
+3. Words describing emotions go in emotional scenes. Business/work words go in professional scenes. Nature words in outdoor scenes. Etc.
+4. The story must have a clear beginning (introduction + problem), middle (challenges + growth), and end (resolution + lesson).
+
+Return ONLY valid JSON:
 {
-  "title": "A Great Catchy Title",
-  "protagonist": "Character name and personality details",
-  "setting": "Specific setting description",
-  "conflict": "The central obstacle or mission",
-  "sceneGoals": [
-    "Scene 1 goal: Introduction to character, setting, and initial spark",
-    "Scene 2 goal: The obstacle emerges..."
+  "title": "Catchy 3-6 word story title (no asterisks)",
+  "protagonist": "Name + brief personality (e.g. 'Arjun, a curious and determined young teacher')",
+  "supportingChars": ["Character 2 name + role", "Character 3 name + role"],
+  "setting": "Vivid, specific setting description",
+  "conflict": "Central challenge or quest that drives the story",
+  "lesson": "The meaningful lesson or theme",
+  "scenes": [
+    {
+      "goal": "What happens in this scene",
+      "tone": "emotional|humorous|tense|inspiring|reflective",
+      "wordAssignments": ["word1", "word2"]
+    }
   ]
 }`;
 
   let storyTitle = 'The Journey of a Resilient Spirit';
-  let protagonist = 'Alex, a dedicated and optimistic creator';
+  let protagonist = 'Arjun, a dedicated and optimistic creator';
+  let supportingChars = ['Priya, a wise mentor', 'Sam, a cheerful friend'];
   let setting = 'A lively historic coastal town bustling with small workshops';
   let conflict = 'Building a community initiative against unexpected setbacks';
+  let lesson = 'Perseverance and empathy lead to meaningful growth';
   let sceneGoals = [];
+  let sceneTones = [];
 
   try {
     const planRaw = await callGroqWithRetry(
@@ -720,79 +753,76 @@ Respond ONLY with valid JSON:
         { role: 'system', content: 'You are an expert story planner. Always return valid JSON only.' },
         { role: 'user', content: planPrompt },
       ],
-      { maxTokens: 800, temperature: 0.78 }
+      { maxTokens: 1200, temperature: 0.78 }
     );
     const cleaned = cleanJsonContent(planRaw);
     const parsed = JSON.parse(cleaned);
     if (parsed.title) storyTitle = parsed.title.replace(/\*\*/g, '').trim();
     if (parsed.protagonist) protagonist = parsed.protagonist.trim();
+    if (Array.isArray(parsed.supportingChars) && parsed.supportingChars.length > 0) {
+      supportingChars = parsed.supportingChars;
+    }
     if (parsed.setting) setting = parsed.setting.trim();
     if (parsed.conflict) conflict = parsed.conflict.trim();
-    if (Array.isArray(parsed.sceneGoals)) sceneGoals = parsed.sceneGoals;
+    if (parsed.lesson) lesson = parsed.lesson.trim();
+    if (Array.isArray(parsed.scenes)) {
+      sceneGoals = parsed.scenes.map((s) => s.goal || '');
+      sceneTones = parsed.scenes.map((s) => s.tone || 'inspiring');
+    }
   } catch {
     // Graceful fallback defaults
   }
 
   const storySections = [];
 
-  // Stage 2: Sequential Section Generation following the plan
+  // Stage 3: Sequential scene generation — track used words, pass remaining to later scenes
+  const usedWordSet = new Set();
+
   for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    const chunkPct = 15 + Math.round(((chunkIndex) / numChunks) * 65);
-    const statusMsg =
-      numChunks === 1
-        ? 'Writing your story and integrating vocabulary...'
-        : `Writing scene ${chunkIndex + 1} of ${numChunks}...`;
-
-    onProgress(chunkPct, statusMsg);
-
-    const chunkWordList = chunk.map((w, idx) => `${idx + 1}. **${w.word}** — Meaning: ${w.meaning}`).join('\n');
+    const sceneNum = chunkIndex + 1;
+    const totalScenes = numChunks;
     const isFirst = chunkIndex === 0;
     const isLast = chunkIndex === numChunks - 1;
-    const currentSceneGoal = sceneGoals[chunkIndex] || (isFirst ? 'Establish character and starting dilemma' : isLast ? 'Bring the journey to an uplifting resolution' : 'Overcome new hurdles through teamwork');
 
-    let sectionPrompt = '';
-    if (isFirst) {
-      sectionPrompt = `Story Title: "${storyTitle}"
-Protagonist: ${protagonist}
-Setting: ${setting}
-Central Mission: ${conflict}
-Scene 1 Goal: ${currentSceneGoal}
+    // Progress: linear from 18% to 80% across all scenes
+    const scenePct = 18 + Math.round((chunkIndex / numChunks) * 62);
+    onProgress(scenePct, `Writing scene ${sceneNum} of ${totalScenes}...`);
 
-Target Vocabulary Words for this scene (${chunk.length} words):
+    const sceneGoal = sceneGoals[chunkIndex] || (isFirst ? 'Establish character and starting dilemma' : isLast ? 'Bring the journey to an uplifting resolution' : 'Overcome new hurdles through teamwork');
+    const sceneTone = sceneTones[chunkIndex] || 'inspiring';
+    const targetWordCount = Math.max(160, chunk.length * 24);
+
+    const chunkWordList = chunk
+      .map((w, idx) => `${idx + 1}. **${w.word}** — Meaning: ${w.meaning}${w.hindiMeaning ? ` (Hindi: ${w.hindiMeaning})` : ''}`)
+      .join('\n');
+
+    const prevContext = !isFirst ? storySections[storySections.length - 1].slice(-500) : '';
+
+    const sectionPrompt = `STORY: "${storyTitle}"
+PROTAGONIST: ${protagonist}
+SUPPORTING CHARACTERS: ${supportingChars.join(', ')}
+SETTING: ${setting}
+CENTRAL CONFLICT: ${conflict}
+STORY LESSON: ${lesson}
+
+SCENE ${sceneNum} OF ${totalScenes} — ${sceneTone.toUpperCase()} TONE
+Scene Goal: ${sceneGoal}
+
+${!isFirst ? `PREVIOUS SCENE ENDING:\n"...${prevContext}"\n\nContinue seamlessly from this exact point.\n` : ''}
+VOCABULARY WORDS FOR THIS SCENE (use ALL of these, each marked **word**):
 ${chunkWordList}
 
-STORYTELLING & FORMATTING RULES:
-1. Write the opening section of this continuous story in simple, natural, everyday English.
-2. Naturally integrate EVERY target vocabulary word in an authentic context that matches its true meaning and part of speech. Do NOT write dictionary definition sentences.
-3. Every time one of the target vocabulary words appears, enclose it in double asterisks like **word**.
-4. Use story-appropriate emojis naturally (e.g. 🌞 for morning, ⚡ for surprise, 😄 for humor, 🤝 for friendship/teamwork, 🚀 for milestone, ❤️ for kindness, 🌱 for growth). Use 1-3 emojis per scene where they fit best.
-5. Do NOT include section headers, chapter labels, or markdown titles. Start directly with the narrative prose.
-${isLast ? 'Bring the story to a satisfying, meaningful conclusion.' : 'End this scene at a natural transition point seamlessly leading to the next event.'}
-Approximate length: ${Math.max(160, chunk.length * 24)} words.`;
-    } else {
-      const prevContext = storySections[storySections.length - 1].slice(-500);
-      sectionPrompt = `Story Title: "${storyTitle}"
-Protagonist: ${protagonist}
-Setting: ${setting}
-Overall Conflict: ${conflict}
-Scene ${chunkIndex + 1} Goal: ${currentSceneGoal}
-
-Previous Scene Narrative (for seamless continuity):
-"...${prevContext}"
-
-Target Vocabulary Words for this scene (${chunk.length} words):
-${chunkWordList}
-
-STORYTELLING & FORMATTING RULES:
-1. Continue this exact story seamlessly from where the previous scene left off. Maintain the exact same characters, setting, dialogue, and engaging tone.
-2. Naturally integrate EVERY target vocabulary word in an authentic context that makes sense.
-3. Every time one of the target vocabulary words appears, enclose it in double asterisks like **word**.
-4. Use emojis naturally where appropriate (⚡, 😄, 🤝, 🚀, ❤️, 🌱).
-5. Do NOT write "Part ${chunkIndex + 1}" or any headings. Continue the prose directly.
-${isLast ? 'Conclude the story with a satisfying, memorable resolution and positive lesson.' : 'End at a natural transition leading to the next step.'}
-Approximate length: ${Math.max(160, chunk.length * 24)} words.`;
-    }
+STORYTELLING RULES:
+1. Write natural, flowing prose — NOT a list of sentences with words forced in.
+2. Use EVERY vocabulary word authentically based on its true meaning: ${chunkWordList.replace(/\n/g, '; ')}
+3. Mark every vocabulary word with **double asterisks** like **compassion** or **persevere**.
+4. Include natural dialogue ("..."), character reactions, sensory details.
+5. Use 1-2 contextually appropriate emojis (🌞 morning/hope, ⚡ surprise, 😄 funny, 🤝 teamwork, 🚀 achievement, ❤️ emotion, 🌱 growth, 🎉 celebration).
+6. NO section headers, NO "Part N", NO chapter labels. Pure prose.
+7. Grammar must be natural and correct.
+8. Scene length: ${targetWordCount} words approximately.
+${isLast ? '9. Bring the story to a satisfying, complete, meaningful conclusion.' : '9. End at a natural moment that flows into the next scene.'}`;
 
     const sectionContent = await callGroqWithRetry(
       apiKey,
@@ -814,22 +844,49 @@ Approximate length: ${Math.max(160, chunk.length * 24)} words.`;
       .replace(/^(Part \d+|Chapter \d+|Section \d+|Scene \d+)[:\s-]*/gim, '')
       .trim();
 
+    // Track which words were successfully used in this scene
+    for (const w of chunk) {
+      const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
+      if (reg.test(cleanedSection)) {
+        usedWordSet.add(w.word.toLowerCase());
+      }
+    }
+
     storySections.push(cleanedSection);
   }
 
-  // Stage 3: Verification of Vocabulary Coverage
-  onProgress(82, 'Checking vocabulary coverage & context...');
+  // Stage 4: Validation pass — build validation records
+  onProgress(83, 'Running vocabulary coverage check...');
   let combinedStory = storySections.join('\n\n').trim();
 
-  // Find any omitted words
-  const missingWords = cleanWords.filter((w) => {
-    const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
-    return !reg.test(combinedStory);
+  const validationRecords = cleanWords.map((w) => {
+    const wordRegex = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'gi');
+    const matches = [...combinedStory.matchAll(wordRegex)];
+
+    if (matches.length === 0) {
+      return { word: w.word, status: 'missing', sentence: null, expectedMeaning: w.meaning };
+    }
+
+    // Extract the sentence containing the first match
+    const matchIndex = combinedStory.search(new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i'));
+    const sentenceStart = Math.max(0, combinedStory.lastIndexOf('.', matchIndex) + 1);
+    const sentenceEnd = combinedStory.indexOf('.', matchIndex + w.word.length);
+    const sentence = combinedStory
+      .slice(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : sentenceStart + 200)
+      .trim();
+
+    return { word: w.word, expectedMeaning: w.meaning, sentence, status: 'used' };
   });
 
-  if (missingWords.length > 0 && missingWords.length <= 25) {
-    onProgress(88, `Integrating ${missingWords.length} vocabulary word${missingWords.length === 1 ? '' : 's'} naturally...`);
-    const missingList = missingWords.map((w, idx) => `${idx + 1}. **${w.word}** — ${w.meaning}`).join('\n');
+  const missingFromValidation = validationRecords.filter((r) => r.status === 'missing');
+  const usedFromValidation = validationRecords.filter((r) => r.status === 'used');
+
+  // Stage 5: Missing/failed word integration — weave unfound words into natural extended passages
+  if (missingFromValidation.length > 0 && missingFromValidation.length <= 25) {
+    onProgress(88, `Integrating ${missingFromValidation.length} missing vocabulary word${missingFromValidation.length === 1 ? '' : 's'} naturally...`);
+    const missingList = missingFromValidation
+      .map((r, idx) => `${idx + 1}. **${r.word}** — ${r.expectedMeaning}`)
+      .join('\n');
     const revisionPrompt = `Here is the current concluding part of our story about ${protagonist}:
 "${combinedStory.slice(-500)}"
 
@@ -856,34 +913,97 @@ Rules:
         .replace(/^(Epilogue|Conclusion)[:\s-]*/gim, '')
         .trim();
       combinedStory += '\n\n' + cleanEpilogue;
+
+      // Update validation records for words that are now present
+      for (const record of validationRecords) {
+        if (record.status === 'missing') {
+          const checkRegex = new RegExp(`\\b${escapeRegex(record.word)}\\b`, 'i');
+          if (checkRegex.test(cleanEpilogue)) {
+            record.status = 'used';
+            const matchIndex = cleanEpilogue.search(checkRegex);
+            const sentenceStart = Math.max(0, cleanEpilogue.lastIndexOf('.', matchIndex) + 1);
+            const sentenceEnd = cleanEpilogue.indexOf('.', matchIndex + record.word.length);
+            record.sentence = cleanEpilogue
+              .slice(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : sentenceStart + 200)
+              .trim();
+          }
+        }
+      }
     } catch {
       // Continue safely
     }
   }
 
-  // Stage 4: Grammar check and bold word formatting
-  onProgress(94, 'Finalizing your complete story...');
+  // Stage 6: Final assembly — fix bold formatting, remove duplicate paragraphs
+  onProgress(93, 'Validating meaning accuracy...');
 
-  // Ensure any saved word in the text has **word** formatting if asterisks were dropped by the model
+  // Ensure any vocab word in text has **word** formatting if asterisks were dropped by the model
   for (const w of cleanWords) {
     const regex = new RegExp(`(?<!\\*\\*)\\b(${escapeRegex(w.word)})\\b(?!\\*\\*)`, 'gi');
     combinedStory = combinedStory.replace(regex, '**$1**');
   }
 
-  // Calculate words successfully used
+  // Remove exact duplicate paragraphs
+  const paragraphs = combinedStory.split(/\n\s*\n/);
+  const seenParas = new Set();
+  const deduplicatedParas = paragraphs.filter((para) => {
+    const key = para.trim().slice(0, 80);
+    if (seenParas.has(key)) return false;
+    seenParas.add(key);
+    return true;
+  });
+  combinedStory = deduplicatedParas.join('\n\n').trim();
+
+  onProgress(97, 'Assembling final story...');
+
+  // Calculate words successfully used (re-check after all modifications)
   const wordsUsedList = cleanWords.filter((w) => {
     const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
     return reg.test(combinedStory);
   });
 
-  onProgress(100, 'Story ready!');
+  // Re-compute final validation state after assembly
+  const finalValidationRecords = cleanWords.map((w) => {
+    const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
+    const found = reg.test(combinedStory);
+    if (!found) {
+      return { word: w.word, status: 'missing', sentence: null, expectedMeaning: w.meaning };
+    }
+    // Find stored record or recompute sentence
+    const existing = validationRecords.find((r) => r.word === w.word);
+    if (existing && existing.sentence) return existing;
+    const matchIndex = combinedStory.search(new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i'));
+    const sentenceStart = Math.max(0, combinedStory.lastIndexOf('.', matchIndex) + 1);
+    const sentenceEnd = combinedStory.indexOf('.', matchIndex + w.word.length);
+    const sentence = combinedStory
+      .slice(sentenceStart, sentenceEnd > 0 ? sentenceEnd + 1 : sentenceStart + 200)
+      .trim();
+    return { word: w.word, expectedMeaning: w.meaning, sentence, status: 'used' };
+  });
+
+  const finalMissing = finalValidationRecords.filter((r) => r.status === 'missing');
+
+  // Build validation summary
+  const validationSummary = {
+    totalChecked: cleanWords.length,
+    successfullyUsed: wordsUsedList.length,
+    missing: finalMissing.map((r) => r.word),
+    records: finalValidationRecords,
+  };
+
+  onProgress(100, 'Your story is ready!');
 
   return {
     title: storyTitle,
     story: combinedStory,
-    wordsUsed: wordsUsedList,
+    wordsUsed: wordsUsedList.map((w) => ({
+      word: w.word,
+      meaning: w.meaning,
+      hindiMeaning: w.hindiMeaning,
+    })),
     wordsUsedCount: wordsUsedList.length,
     totalWords: cleanWords.length,
+    validationSummary,
   };
 }
 
@@ -946,6 +1066,7 @@ app.post('/api/story/generate-stream', async (req, res) => {
         wordsUsed: result.wordsUsed,
         wordsUsedCount: result.wordsUsedCount,
         totalWords: result.totalWords,
+        validationSummary: result.validationSummary || null,
       });
       res.end();
     } catch (genErr) {
@@ -986,7 +1107,14 @@ app.post('/api/story/generate', async (req, res) => {
 
     const result = await executeMultiStageStoryGeneration(apiKey, words, () => {});
     recordSuccessfulStory(req);
-    return res.json(result);
+    return res.json({
+      title: result.title,
+      story: result.story,
+      wordsUsed: result.wordsUsed,
+      wordsUsedCount: result.wordsUsedCount,
+      totalWords: result.totalWords,
+      validationSummary: result.validationSummary || null,
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to process story generation request.' });
   }

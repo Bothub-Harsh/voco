@@ -95,7 +95,7 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
 
-                    <!-- Don't Remember (Red) -->
+                    <!-- Meaning (White Normal) -->
                     <Button
                         android:id="@+id/btn_dont_remember"
                         style="?android:attr/borderlessButtonStyle"
@@ -104,9 +104,9 @@
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_dont_remember"
-                        android:text="😅 Don't Remember"
+                        android:text="Meaning"
                         android:textAllCaps="false"
-                        android:textColor="#DC2626"
+                        android:textColor="#334155"
                         android:textSize="13sp"
                         android:textStyle="bold" />
 
@@ -119,7 +119,7 @@
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_remember"
-                        android:text="✅ Remember"
+                        android:text="Remember"
                         android:textAllCaps="false"
                         android:textColor="#059669"
                         android:textSize="13sp"

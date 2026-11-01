@@ -29,6 +29,7 @@ interface StoryModalProps {
 interface TooltipState {
   word: string;
   meaning: string;
+  hindiMeaning?: string;
   x: number;
   y: number;
   showAbove: boolean;
@@ -86,13 +87,16 @@ export const StoryModal: React.FC<StoryModalProps> = ({
     [onClose, isGenerating]
   );
 
-  // Create dictionary lookup for fast meaning resolution
+  // Create dictionary lookup for fast meaning resolution (English + Hindi)
   const meaningMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { meaning: string; hindiMeaning?: string }>();
     if (!story?.wordsUsed) return map;
     for (const item of story.wordsUsed) {
       if (item && item.word) {
-        map.set(item.word.toLowerCase().trim(), item.meaning || '');
+        map.set(item.word.toLowerCase().trim(), {
+          meaning: item.meaning || '',
+          hindiMeaning: (item as { word: string; meaning: string; hindiMeaning?: string }).hindiMeaning,
+        });
       }
     }
     return map;
@@ -100,7 +104,7 @@ export const StoryModal: React.FC<StoryModalProps> = ({
 
   // Helper to resolve the meaning for any bold word form (singular, past tense, etc.)
   const resolveMeaning = useCallback(
-    (rawWord: string): string | null => {
+    (rawWord: string): { meaning: string; hindiMeaning?: string } | null => {
       const lower = rawWord.toLowerCase().trim();
       if (meaningMap.has(lower)) return meaningMap.get(lower)!;
 
@@ -127,8 +131,8 @@ export const StoryModal: React.FC<StoryModalProps> = ({
   // Show tooltip positioning near the touched or hovered element
   const showTooltipForElement = useCallback(
     (rawWord: string, el: HTMLElement) => {
-      const meaning = resolveMeaning(rawWord);
-      if (!meaning) return;
+      const entry = resolveMeaning(rawWord);
+      if (!entry) return;
 
       const rect = el.getBoundingClientRect();
       const showAbove = rect.top > 120;
@@ -139,7 +143,8 @@ export const StoryModal: React.FC<StoryModalProps> = ({
 
       setActiveTooltip({
         word: rawWord,
-        meaning,
+        meaning: entry.meaning,
+        hindiMeaning: entry.hindiMeaning,
         x: clampedX,
         y: targetY,
         showAbove,
@@ -223,6 +228,17 @@ export const StoryModal: React.FC<StoryModalProps> = ({
                   <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200/60 dark:border-emerald-800/40">
                     {wordsUsedCount} of {totalWordsCount} words included
                   </span>
+                  {story.validationSummary && (
+                    story.validationSummary.missing.length === 0 ? (
+                      <span className="text-[11px] font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/40 px-2 py-0.5 rounded-full border border-green-200/60 dark:border-green-800/40">
+                        ✓ All words used
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/40">
+                        ⚠ {story.validationSummary.missing.length} word{story.validationSummary.missing.length === 1 ? '' : 's'} missed
+                      </span>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -381,6 +397,11 @@ export const StoryModal: React.FC<StoryModalProps> = ({
                           <p className="text-[11px] text-slate-500 dark:text-[#A5A8B5] leading-snug">
                             {w.meaning}
                           </p>
+                          {(w as { word: string; meaning: string; hindiMeaning?: string }).hindiMeaning && (
+                            <p className="text-[10px] text-slate-400 dark:text-[#808494] leading-snug italic mt-0.5">
+                              {(w as { word: string; meaning: string; hindiMeaning?: string }).hindiMeaning}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -408,6 +429,11 @@ export const StoryModal: React.FC<StoryModalProps> = ({
               <p className="text-[11px] leading-snug text-slate-100">
                 {activeTooltip.meaning}
               </p>
+              {activeTooltip.hindiMeaning && (
+                <p className="text-[10px] leading-snug text-slate-300 mt-1 italic">
+                  {activeTooltip.hindiMeaning}
+                </p>
+              )}
             </div>
           </div>
         )}

@@ -129,4 +129,98 @@ describe('Story Generator Architecture & Helpers', () => {
     expect(progressValues[0]).toBe(5);
     expect(progressValues[progressValues.length - 1]).toBe(100);
   });
+
+  // Test vocabulary validation record building
+  it('correctly identifies missing and used words in validation', () => {
+    function escapeRegex(s: string) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    const storyText = 'Alex showed **compassion** when he helped his friend. Despite adversity, he remained **perseverant** in his work. The day was **serene** and calm.';
+
+    const vocabWords = [
+      { word: 'compassion', meaning: 'care for others' },
+      { word: 'perseverant', meaning: 'continuing despite difficulties' },
+      { word: 'serene', meaning: 'calm and peaceful' },
+      { word: 'ephemeral', meaning: 'lasting for a short time' },
+    ];
+
+    const records = vocabWords.map(w => {
+      const regex = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'gi');
+      const found = regex.test(storyText);
+      return { word: w.word, status: found ? 'used' : 'missing' as 'used' | 'missing' };
+    });
+
+    const used = records.filter(r => r.status === 'used');
+    const missing = records.filter(r => r.status === 'missing');
+
+    expect(used.length).toBe(3);
+    expect(missing.length).toBe(1);
+    expect(missing[0].word).toBe('ephemeral');
+  });
+
+  // Test that word boundary check doesn't falsely pass substrings
+  it('word boundary check prevents false positives for partial matches', () => {
+    function escapeRegex(s: string) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    const storyText = 'The catalogue of severe misconceptions was extensive.';
+
+    const tests = [
+      { word: 'cat', expectedFound: false },
+      { word: 'severe', expectedFound: true },
+      { word: 'catalog', expectedFound: false }, // 'catalogue' not exact match
+      { word: 'log', expectedFound: false },
+    ];
+
+    for (const t of tests) {
+      const regex = new RegExp(`\\b${escapeRegex(t.word)}\\b`, 'i');
+      expect(regex.test(storyText)).toBe(t.expectedFound);
+    }
+  });
+
+  // Test that bold formatting is applied to all vocab words
+  it('applies double-asterisk bold to all vocab words found in story', () => {
+    function escapeRegex(s: string) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    let story = 'Alex showed compassion when he helped. He showed resilience every day. It was serendipity.';
+    const vocabWords = ['compassion', 'resilience', 'serendipity'];
+
+    for (const w of vocabWords) {
+      const regex = new RegExp(`(?<!\\*\\*)\\b(${escapeRegex(w)})\\b(?!\\*\\*)`, 'gi');
+      story = story.replace(regex, '**$1**');
+    }
+
+    expect(story).toContain('**compassion**');
+    expect(story).toContain('**resilience**');
+    expect(story).toContain('**serendipity**');
+    expect(story).not.toContain('****'); // no double bold
+  });
+
+  // Test validation summary structure
+  it('validation summary correctly counts used vs missing words', () => {
+    interface ValidationRecord { word: string; status: 'used' | 'missing' }
+
+    const records: ValidationRecord[] = [
+      { word: 'brave', status: 'used' },
+      { word: 'compassion', status: 'used' },
+      { word: 'ephemeral', status: 'missing' },
+      { word: 'resilient', status: 'used' },
+      { word: 'tenacious', status: 'missing' },
+    ];
+
+    const summary = {
+      totalChecked: records.length,
+      successfullyUsed: records.filter(r => r.status === 'used').length,
+      missing: records.filter(r => r.status === 'missing').map(r => r.word),
+    };
+
+    expect(summary.totalChecked).toBe(5);
+    expect(summary.successfullyUsed).toBe(3);
+    expect(summary.missing).toEqual(['ephemeral', 'tenacious']);
+    expect(summary.missing.length + summary.successfullyUsed).toBe(summary.totalChecked);
+  });
 });
