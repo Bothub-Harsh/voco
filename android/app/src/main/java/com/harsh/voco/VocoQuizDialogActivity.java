@@ -70,8 +70,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private TextView textBackHindi;
     private LinearLayout layoutBackExample;
     private TextView textBackExample;
-    private Button btnDontRemember;
-    private Button btnRemember;
     private Button btnBottomAction;
 
     @Override
@@ -194,8 +192,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         layoutBackExample = findViewById(R.id.layout_back_example);
         textBackExample = findViewById(R.id.text_back_example);
 
-        btnDontRemember = findViewById(R.id.btn_dont_remember);
-        btnRemember = findViewById(R.id.btn_remember);
         btnBottomAction = findViewById(R.id.btn_bottom_action);
 
         // Flashcard Flip Listener: tapping card triggers 3D flip between front and back
@@ -205,10 +201,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         populateCardData();
         updateBottomButton();
-
-        // ─── Remember / Don't Remember Button Listeners ───
-        btnRemember.setOnClickListener(v -> handleRememberClicked());
-        btnDontRemember.setOnClickListener(v -> handleDontRememberClicked());
 
         // ─── Dynamic Next / Close Button Listener ───
         btnBottomAction.setOnClickListener(v -> {
@@ -265,36 +257,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             btnBottomAction.setTextColor(Color.WHITE);
             textPendingBadge.setVisibility(View.GONE);
         }
-    }
-
-    /**
-     * Remember action:
-     * - Marks the word as remembered in stats and removes from pending queue.
-     * - If another pending word exists: opens next flashcard.
-     * - If no other pending word: shows Close.
-     */
-    private void handleRememberClicked() {
-        recordQuizStats(wordText, true);
-        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
-
-        int otherPending = VocoAlarmScheduler.getOtherPendingNotificationCount(this, null);
-        if (otherPending > 0) {
-            handleNextPendingWord();
-        } else {
-            updateBottomButton();
-            dismissQuiz();
-        }
-    }
-
-    /**
-     * Don't Remember action:
-     * - Marks the word as not remembered in stats.
-     * - Returns user to the front of the same card so they can try again.
-     * - Does NOT remove the word from queue.
-     */
-    private void handleDontRememberClicked() {
-        recordQuizStats(wordText, false);
-        resetToFront();
     }
 
     /**

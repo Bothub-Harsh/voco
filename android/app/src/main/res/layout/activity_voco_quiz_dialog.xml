@@ -239,45 +239,6 @@
                 </LinearLayout>
             </FrameLayout>
 
-            <!-- ── REMEMBER / DON'T REMEMBER ACTION BUTTONS ── -->
-            <LinearLayout
-                android:id="@+id/layout_practice_actions"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:orientation="horizontal">
-
-                <!-- Don't Remember (Neutral White) -->
-                <Button
-                    android:id="@+id/btn_dont_remember"
-                    style="?android:attr/borderlessButtonStyle"
-                    android:layout_width="0dp"
-                    android:layout_height="46dp"
-                    android:layout_marginEnd="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_dont_remember"
-                    android:text="Don't Remember"
-                    android:textAllCaps="false"
-                    android:textColor="#334155"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <!-- Remember (Green) -->
-                <Button
-                    android:id="@+id/btn_remember"
-                    style="?android:attr/borderlessButtonStyle"
-                    android:layout_width="0dp"
-                    android:layout_height="46dp"
-                    android:layout_marginStart="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_btn_remember"
-                    android:text="Remember"
-                    android:textAllCaps="false"
-                    android:textColor="#059669"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
             <!-- ── DYNAMIC NAVIGATION BUTTON: Next or Close ── -->
             <Button
                 android:id="@+id/btn_bottom_action"
