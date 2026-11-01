@@ -68,6 +68,7 @@ export interface PendingNotificationItem {
   wordId: string;
   word: string;
   timestamp: number;
+  isTest?: boolean;
 }
 
 // Default interval in milliseconds (5 minutes)
@@ -120,7 +121,21 @@ export function getPendingNotificationQueue(): PendingNotificationItem[] {
   if (!data) return [];
   try {
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    const maxAgeMs = 24 * 60 * 60 * 1000; // 24 hours
+    // Prune stale or expired notifications (older than 24 hours in real epoch ms)
+    const valid = parsed.filter((item) => {
+      if (!item || !item.wordId) return false;
+      if (typeof item.timestamp === 'number' && item.timestamp > 1_000_000_000_000) {
+        return now - item.timestamp < maxAgeMs;
+      }
+      return true;
+    });
+    if (valid.length !== parsed.length) {
+      savePendingNotificationQueue(valid);
+    }
+    return valid;
   } catch {
     return [];
   }
@@ -492,11 +507,7 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
   if (!Capacitor.isNativePlatform()) return false;
   try {
     await ensureNotificationChannel();
-    enqueuePendingNotification({
-      wordId: word.id,
-      word: word.word,
-      timestamp: Date.now(),
-    });
+    // On native Android, native scheduler manages its own queue with isTest=true
     await VocoScheduler.sendTestNotification({
       wordId: word.id,
       word: word.word,
@@ -536,7 +547,8 @@ export async function getNativeQuizStats(): Promise<{
 
 export async function dispatchWordNotification(
   word: VocabularyWord,
-  onOpenQuiz?: (word: VocabularyWord) => void
+  onOpenQuiz?: (word: VocabularyWord) => void,
+  isTest = false
 ): Promise<boolean> {
   if (Capacitor.isNativePlatform()) {
     return scheduleTestNotification(word);
@@ -546,18 +558,17 @@ export async function dispatchWordNotification(
     return false;
   }
 
-  const title = 'Voco — Practice Time!';
+  const title = isTest ? 'Voco — Test Practice! 🧪' : 'Voco — Practice Time!';
   const body = `What does ${word.word.toUpperCase()} mean?`;
   const url = `/?quiz=${encodeURIComponent(word.id)}`;
 
   try {
-    // Use a unique timestamp-based tag so each reminder creates a NEW notification
-    // instead of replacing the previous one (same tag = replacement in browser notifications)
     const uniqueTag = `vocab-reminder-${word.id}-${Date.now()}`;
     enqueuePendingNotification({
       wordId: word.id,
       word: word.word,
       timestamp: Date.now(),
+      isTest,
     });
 
     if ('serviceWorker' in navigator) {

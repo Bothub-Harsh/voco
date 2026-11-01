@@ -251,20 +251,16 @@ export function App() {
 
   // ─── Flashcard Handlers ───
   const handleFlashcardRemember = useCallback(async () => {
-    // Word remembered — check if more in queue, otherwise close
-    const nextItem = dequeuePendingNotification();
-    refreshPendingQueue();
-    setActiveFlashcard(null);
-    if (nextItem) {
-      const found = await getWordById(nextItem.wordId);
-      if (found) {
-        setActiveFlashcard(found);
-      }
+    if (activeFlashcard) {
+      removePendingNotificationByWordId(activeFlashcard.id);
+      refreshPendingQueue();
     }
-  }, [refreshPendingQueue]);
+  }, [activeFlashcard, refreshPendingQueue]);
 
   const handleFlashcardNext = useCallback(async () => {
-    // After completing quiz on "Don't Remember" — load next pending word
+    if (activeFlashcard) {
+      removePendingNotificationByWordId(activeFlashcard.id);
+    }
     const nextItem = dequeuePendingNotification();
     refreshPendingQueue();
     setActiveFlashcard(null);
@@ -274,11 +270,15 @@ export function App() {
         setActiveFlashcard(found);
       }
     }
-  }, [refreshPendingQueue]);
+  }, [activeFlashcard, refreshPendingQueue]);
 
   const handleFlashcardClose = useCallback(() => {
+    if (activeFlashcard) {
+      removePendingNotificationByWordId(activeFlashcard.id);
+      refreshPendingQueue();
+    }
     setActiveFlashcard(null);
-  }, []);
+  }, [activeFlashcard, refreshPendingQueue]);
 
   // ─── Story Cooldown Timer Ticker (Updates every second) ───
   useEffect(() => {
@@ -883,7 +883,7 @@ export function App() {
         alert('Could not deliver test notification. Check notification permissions.');
       }
     } else {
-      const sent = await dispatchWordNotification(nextWord, (w) => openQuizForWord(w));
+      const sent = await dispatchWordNotification(nextWord, (w) => openFlashcardForWord(w), true);
       if (!sent) {
         alert('Could not deliver test notification. Check browser permissions.');
       }
@@ -1203,7 +1203,7 @@ export function App() {
         <FlashcardScreen
           word={activeFlashcard}
           allSavedWords={words}
-          remainingCount={pendingNotificationQueue.length}
+          remainingCount={pendingNotificationQueue.filter((item) => item.wordId !== activeFlashcard.id).length}
           onRemember={handleFlashcardRemember}
           onNext={handleFlashcardNext}
           onClose={handleFlashcardClose}

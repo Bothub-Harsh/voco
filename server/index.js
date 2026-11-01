@@ -646,7 +646,9 @@ async function callGroqWithRetry(apiKey, messages, { maxTokens = 2000, temperatu
 }
 
 /**
- * Intelligent multi-stage story generator supporting 5 to 150+ vocabulary words.
+ * High-quality multi-stage story generator supporting 5 to 200+ vocabulary words.
+ * Implements internal planning, character consistency, natural emoji use,
+ * and contextual vocabulary integration modeled after "The Journey of a Resilient Young Entrepreneur".
  */
 async function executeMultiStageStoryGeneration(apiKey, words, onProgress) {
   const cleanWords = words
@@ -661,109 +663,135 @@ async function executeMultiStageStoryGeneration(apiKey, words, onProgress) {
   }
 
   const totalWords = cleanWords.length;
-  onProgress(5, 'Preparing your vocabulary...');
+  onProgress(5, 'Preparing saved vocabulary...');
 
-  // Divide words into manageable chunks of at most 20 words to prevent token / context overflow
-  const CHUNK_SIZE = 20;
+  // Group words into batches of 15-20 words per scene to prevent context overflow
+  const CHUNK_SIZE = Math.min(20, Math.max(12, Math.ceil(totalWords / Math.ceil(totalWords / 18))));
   const chunks = [];
   for (let i = 0; i < cleanWords.length; i += CHUNK_SIZE) {
     chunks.push(cleanWords.slice(i, i + CHUNK_SIZE));
   }
 
   const numChunks = chunks.length;
-  let storyTitle = 'An Unexpected Vocabulary Journey';
-  let storylineConcept = '';
-  const storySections = [];
+  onProgress(10, 'Planning storyline, characters & scenes...');
 
-  // Stage 1: Overall storyline & title planning (5% - 15%)
-  onProgress(10, 'Creating your storyline...');
-
-  const sampleWordsList = cleanWords
-    .slice(0, Math.min(15, cleanWords.length))
-    .map((w) => `"${w.word}"`)
+  // Stage 1: Architectural Story Planning
+  // Plan overarching story premise, characters, setting, and scene breakdown
+  const sampleWordsPreview = cleanWords
+    .slice(0, Math.min(25, cleanWords.length))
+    .map((w) => `"${w.word}" (${w.meaning})`)
     .join(', ');
 
-  const conceptPrompt = `You are a master fiction author and vocabulary teacher.
-We will write ONE continuous, engaging, funny, and heartwarming story for English learners that naturally includes ${totalWords} vocabulary words.
+  const planPrompt = `You are an acclaimed creative author designing a story for English vocabulary learners.
+Benchmark style: "The Journey of a Resilient Young Entrepreneur" — inspiring, relatable, humorous, heartfelt.
 
-Sample vocabulary words include: ${sampleWordsList}.
+Total Vocabulary Words to include across the full story: ${totalWords}.
+Sample words include: ${sampleWordsPreview}.
 
-Please create an overarching story concept:
-1. A catchy, fun title (maximum 5 words, do NOT use asterisks).
-2. The main character(s), unique setting, and central mission/adventure.
+Task: Create an architectural story plan for a continuous story spanning ${numChunks} connected scene${numChunks > 1 ? 's' : ''}:
+1. Story Title (catchy, 3-6 words, creative, NO asterisks).
+2. Main Character (relatable protagonist name, their passion or profession, personality trait).
+3. Setting (a vibrant, descriptive setting where events unfold naturally).
+4. Central Conflict / Quest (a challenge that tests their perseverance, trust, or creativity).
+5. Outline for ${numChunks} scene${numChunks > 1 ? 's' : ''} describing the progression from beginning to a meaningful resolution.
 
 Respond ONLY with valid JSON:
 {
   "title": "A Great Catchy Title",
-  "concept": "2-3 sentences outlining the characters, setting, and fun central premise."
+  "protagonist": "Character name and personality details",
+  "setting": "Specific setting description",
+  "conflict": "The central obstacle or mission",
+  "sceneGoals": [
+    "Scene 1 goal: Introduction to character, setting, and initial spark",
+    "Scene 2 goal: The obstacle emerges..."
+  ]
 }`;
 
+  let storyTitle = 'The Journey of a Resilient Spirit';
+  let protagonist = 'Alex, a dedicated and optimistic creator';
+  let setting = 'A lively historic coastal town bustling with small workshops';
+  let conflict = 'Building a community initiative against unexpected setbacks';
+  let sceneGoals = [];
+
   try {
-    const conceptRaw = await callGroqWithRetry(
+    const planRaw = await callGroqWithRetry(
       apiKey,
       [
-        { role: 'system', content: 'You are a creative author. Respond in valid JSON only.' },
-        { role: 'user', content: conceptPrompt },
+        { role: 'system', content: 'You are an expert story planner. Always return valid JSON only.' },
+        { role: 'user', content: planPrompt },
       ],
-      { maxTokens: 400, temperature: 0.8 }
+      { maxTokens: 800, temperature: 0.78 }
     );
-    const cleaned = cleanJsonContent(conceptRaw);
+    const cleaned = cleanJsonContent(planRaw);
     const parsed = JSON.parse(cleaned);
     if (parsed.title) storyTitle = parsed.title.replace(/\*\*/g, '').trim();
-    if (parsed.concept) storylineConcept = parsed.concept.trim();
+    if (parsed.protagonist) protagonist = parsed.protagonist.trim();
+    if (parsed.setting) setting = parsed.setting.trim();
+    if (parsed.conflict) conflict = parsed.conflict.trim();
+    if (Array.isArray(parsed.sceneGoals)) sceneGoals = parsed.sceneGoals;
   } catch {
-    storylineConcept = 'A quirky young adventurer sets off on a comical quest filled with unexpected challenges.';
+    // Graceful fallback defaults
   }
 
-  // Stage 2: Sequential section generation (15% - 80%)
+  const storySections = [];
+
+  // Stage 2: Sequential Section Generation following the plan
   for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
     const chunk = chunks[chunkIndex];
     const chunkPct = 15 + Math.round(((chunkIndex) / numChunks) * 65);
     const statusMsg =
       numChunks === 1
-        ? 'Writing your story...'
-        : `Writing story (${chunkIndex + 1}/${numChunks})...`;
+        ? 'Writing your story and integrating vocabulary...'
+        : `Writing scene ${chunkIndex + 1} of ${numChunks}...`;
 
     onProgress(chunkPct, statusMsg);
 
-    const chunkWordList = chunk.map((w) => `- ${w.word}: ${w.meaning}`).join('\n');
+    const chunkWordList = chunk.map((w, idx) => `${idx + 1}. **${w.word}** — Meaning: ${w.meaning}`).join('\n');
     const isFirst = chunkIndex === 0;
     const isLast = chunkIndex === numChunks - 1;
+    const currentSceneGoal = sceneGoals[chunkIndex] || (isFirst ? 'Establish character and starting dilemma' : isLast ? 'Bring the journey to an uplifting resolution' : 'Overcome new hurdles through teamwork');
 
     let sectionPrompt = '';
     if (isFirst) {
       sectionPrompt = `Story Title: "${storyTitle}"
-Premise: ${storylineConcept}
+Protagonist: ${protagonist}
+Setting: ${setting}
+Central Mission: ${conflict}
+Scene 1 Goal: ${currentSceneGoal}
 
-Task: Write the opening section of this continuous story.
-You MUST naturally include the following ${chunk.length} vocabulary words:
+Target Vocabulary Words for this scene (${chunk.length} words):
 ${chunkWordList}
 
-CRITICAL RULES:
-1. Every time you use one of these vocabulary words, enclose it in double asterisks like **word**.
-2. Keep the writing natural, fun, engaging, and in simple everyday English for learners.
-3. Use 1 or 2 emojis naturally.
-4. Do NOT introduce chapter headings or "Part 1". Just start the story narrative directly.
-${isLast ? 'Complete the entire story naturally.' : 'End this section at a natural transition point leading to the next event.'}
-Approximate length: ${Math.max(120, chunk.length * 20)} words.`;
+STORYTELLING & FORMATTING RULES:
+1. Write the opening section of this continuous story in simple, natural, everyday English.
+2. Naturally integrate EVERY target vocabulary word in an authentic context that matches its true meaning and part of speech. Do NOT write dictionary definition sentences.
+3. Every time one of the target vocabulary words appears, enclose it in double asterisks like **word**.
+4. Use story-appropriate emojis naturally (e.g. 🌞 for morning, ⚡ for surprise, 😄 for humor, 🤝 for friendship/teamwork, 🚀 for milestone, ❤️ for kindness, 🌱 for growth). Use 1-3 emojis per scene where they fit best.
+5. Do NOT include section headers, chapter labels, or markdown titles. Start directly with the narrative prose.
+${isLast ? 'Bring the story to a satisfying, meaningful conclusion.' : 'End this scene at a natural transition point seamlessly leading to the next event.'}
+Approximate length: ${Math.max(160, chunk.length * 24)} words.`;
     } else {
-      // For continuation, pass previous section context
-      const prevContext = storySections[storySections.length - 1].slice(-400);
+      const prevContext = storySections[storySections.length - 1].slice(-500);
       sectionPrompt = `Story Title: "${storyTitle}"
-Overall Premise: ${storylineConcept}
-Story So Far (last part):
+Protagonist: ${protagonist}
+Setting: ${setting}
+Overall Conflict: ${conflict}
+Scene ${chunkIndex + 1} Goal: ${currentSceneGoal}
+
+Previous Scene Narrative (for seamless continuity):
 "...${prevContext}"
 
-Task: Continue this exact story seamlessly. Maintain the same characters, setting, and fun tone.
-You MUST naturally integrate these next ${chunk.length} vocabulary words:
+Target Vocabulary Words for this scene (${chunk.length} words):
 ${chunkWordList}
 
-CRITICAL RULES:
-1. Every time you use one of these vocabulary words, enclose it in double asterisks like **word**.
-2. Do NOT write "Part ${chunkIndex + 1}" or any chapter headings. Continue the prose seamlessly.
-3. Keep the writing natural, engaging, and suitable for learners.
-${isLast ? 'Bring the adventure to a satisfying, funny, or uplifting conclusion.' : 'End at a natural cliffhanger or transition.'}
-Approximate length: ${Math.max(120, chunk.length * 20)} words.`;
+STORYTELLING & FORMATTING RULES:
+1. Continue this exact story seamlessly from where the previous scene left off. Maintain the exact same characters, setting, dialogue, and engaging tone.
+2. Naturally integrate EVERY target vocabulary word in an authentic context that makes sense.
+3. Every time one of the target vocabulary words appears, enclose it in double asterisks like **word**.
+4. Use emojis naturally where appropriate (⚡, 😄, 🤝, 🚀, ❤️, 🌱).
+5. Do NOT write "Part ${chunkIndex + 1}" or any headings. Continue the prose directly.
+${isLast ? 'Conclude the story with a satisfying, memorable resolution and positive lesson.' : 'End at a natural transition leading to the next step.'}
+Approximate length: ${Math.max(160, chunk.length * 24)} words.`;
     }
 
     const sectionContent = await callGroqWithRetry(
@@ -772,69 +800,71 @@ Approximate length: ${Math.max(120, chunk.length * 20)} words.`;
         {
           role: 'system',
           content:
-            'You are a brilliant fiction writer for English learners. Write natural, flowing prose with target vocabulary in **bold**. Never use section headers or markdown titles.',
+            'You are an award-winning creative author writing engaging, accessible fiction for English vocabulary learners. Your reference is "The Journey of a Resilient Young Entrepreneur". Write continuous, natural prose with target words in **bold**.',
         },
         { role: 'user', content: sectionPrompt },
       ],
-      { maxTokens: 1200, temperature: 0.82 }
+      { maxTokens: 1400, temperature: 0.8 }
     );
 
-    // Clean any accidental headers or fences
+    // Clean any accidental markdown headers or code fences
     const cleanedSection = sectionContent
       .replace(/^```[a-z]*\s*/i, '')
       .replace(/\s*```$/i, '')
-      .replace(/^(Part \d+|Chapter \d+|Section \d+)[:\s-]*/gim, '')
+      .replace(/^(Part \d+|Chapter \d+|Section \d+|Scene \d+)[:\s-]*/gim, '')
       .trim();
 
     storySections.push(cleanedSection);
   }
 
-  // Stage 3: Verification of used words (80% - 92%)
-  onProgress(82, 'Checking vocabulary coverage...');
+  // Stage 3: Verification of Vocabulary Coverage
+  onProgress(82, 'Checking vocabulary coverage & context...');
   let combinedStory = storySections.join('\n\n').trim();
 
-  // Find any missing words
+  // Find any omitted words
   const missingWords = cleanWords.filter((w) => {
     const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
     return !reg.test(combinedStory);
   });
 
-  if (missingWords.length > 0 && missingWords.length <= 15) {
-    onProgress(88, `Weaving in remaining words...`);
-    const missingList = missingWords.map((w) => `- ${w.word}: ${w.meaning}`).join('\n');
-    const revisionPrompt = `Here is the current ending of our story:
-"${combinedStory.slice(-400)}"
+  if (missingWords.length > 0 && missingWords.length <= 25) {
+    onProgress(88, `Integrating ${missingWords.length} vocabulary word${missingWords.length === 1 ? '' : 's'} naturally...`);
+    const missingList = missingWords.map((w, idx) => `${idx + 1}. **${w.word}** — ${w.meaning}`).join('\n');
+    const revisionPrompt = `Here is the current concluding part of our story about ${protagonist}:
+"${combinedStory.slice(-500)}"
 
-Task: Write a short, natural concluding epilogue (1-2 paragraphs) to weave in these remaining vocabulary words:
+Task: Write a smooth 1-2 paragraph epilogue to naturally conclude the story while authentically incorporating these remaining vocabulary words:
 ${missingList}
 
 Rules:
 1. Enclose each vocabulary word in double asterisks like **word**.
-2. Make it flow naturally as the final sentences of the story. No headers.`;
+2. Use every word naturally according to its true meaning in natural sentences.
+3. Flow directly from the story with natural emojis (🌱, ❤️, 🚀). No headers.`;
 
     try {
       const epilogue = await callGroqWithRetry(
         apiKey,
         [
-          { role: 'system', content: 'You are a creative writer. Write short, punchy paragraphs.' },
+          { role: 'system', content: 'You are a master creative writer. Write heartwarming, concise paragraphs.' },
           { role: 'user', content: revisionPrompt },
         ],
-        { maxTokens: 500, temperature: 0.8 }
+        { maxTokens: 700, temperature: 0.78 }
       );
       const cleanEpilogue = epilogue
         .replace(/^```[a-z]*\s*/i, '')
         .replace(/\s*```$/i, '')
+        .replace(/^(Epilogue|Conclusion)[:\s-]*/gim, '')
         .trim();
       combinedStory += '\n\n' + cleanEpilogue;
     } catch {
-      // Non-fatal, continue with what we have
+      // Continue safely
     }
   }
 
-  // Stage 4: Ensure all target words that appear in the text are properly bolded
-  onProgress(94, 'Finalizing your story...');
+  // Stage 4: Grammar check and bold word formatting
+  onProgress(94, 'Finalizing your complete story...');
 
-  // Ensure any saved word that is present in the text has **word** formatting if AI omitted asterisks
+  // Ensure any saved word in the text has **word** formatting if asterisks were dropped by the model
   for (const w of cleanWords) {
     const regex = new RegExp(`(?<!\\*\\*)\\b(${escapeRegex(w.word)})\\b(?!\\*\\*)`, 'gi');
     combinedStory = combinedStory.replace(regex, '**$1**');

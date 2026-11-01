@@ -266,6 +266,14 @@ export const StoryModal: React.FC<StoryModalProps> = ({
               <p className="text-xs font-semibold text-slate-500 dark:text-[#A5A8B5] min-h-[1.25rem]">
                 {progressStatus || 'Preparing your vocabulary...'}
               </p>
+
+              {totalSavedWords >= 20 && (
+                <div className="mt-4 p-3.5 bg-indigo-50/80 dark:bg-[#6554F5]/10 rounded-2xl border border-indigo-100 dark:border-[#6554F5]/20 text-[11px] text-slate-600 dark:text-[#A5A8B5] leading-relaxed max-w-xs text-center shadow-xs">
+                  <span>
+                    You have {totalSavedWords} saved words! 📚 Creating a complete story with all your vocabulary takes a little longer. We're connecting your words into one adventure.
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

@@ -18,7 +18,7 @@ interface FlashcardScreenProps {
   remainingCount: number;
   /** Called when user marks the word as remembered (no quiz needed) */
   onRemember: () => void;
-  /** Called when user finishes the Don't-Remember quiz and is ready for the next word or close */
+  /** Called when user finishes and is ready for the next word or close */
   onNext: () => void;
   /** Called to fully close the flashcard overlay */
   onClose: () => void;
@@ -37,6 +37,7 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
 }) => {
   const [face, setFace] = useState<CardFace>('front');
   const [isFlipping, setIsFlipping] = useState(false);
+  const [hasRemembered, setHasRemembered] = useState(false);
 
   // Quiz state (revealed after "Don't Remember")
   const [quizSession, setQuizSession] = useState<ActiveQuizSession | null>(null);
@@ -65,12 +66,17 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
     setTimeout(() => {
       setFace('quiz');
       setIsFlipping(false);
-    }, 320);
+    }, 280);
   }, [word, allSavedWords]);
 
   const handleDontRemember = useCallback(() => {
     if (face === 'front') flipToQuiz();
   }, [face, flipToQuiz]);
+
+  const handleRemember = useCallback(() => {
+    setHasRemembered(true);
+    onRemember();
+  }, [onRemember]);
 
   const handleSelectOption = useCallback(
     (index: number) => {
@@ -108,7 +114,7 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
         <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] border border-indigo-100 dark:border-[#6554F5]/30">
-              {face === 'front' ? '📖 Flashcard' : '❓ Quiz'}
+              {face === 'front' ? '📖 Flashcard' : '❓ Practice'}
             </span>
             {remainingCount > 0 && (
               <span className="text-xs text-slate-500 dark:text-[#A5A8B5]">
@@ -133,9 +139,13 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
               word={word}
               ttsAvailable={ttsAvailable}
               isSpeaking={isSpeaking}
+              hasRemembered={hasRemembered}
+              showNext={showNext}
               onSpeak={handleSpeak}
-              onRemember={onRemember}
+              onRemember={handleRemember}
               onDontRemember={handleDontRemember}
+              onNext={onNext}
+              onClose={onClose}
             />
           ) : (
             quizSession && (
@@ -165,18 +175,26 @@ interface FrontFaceProps {
   word: VocabularyWord;
   ttsAvailable: boolean;
   isSpeaking: boolean;
+  hasRemembered: boolean;
+  showNext: boolean;
   onSpeak: () => void;
   onRemember: () => void;
   onDontRemember: () => void;
+  onNext: () => void;
+  onClose: () => void;
 }
 
 const FrontFace: React.FC<FrontFaceProps> = ({
   word,
   ttsAvailable,
   isSpeaking,
+  hasRemembered,
+  showNext,
   onSpeak,
   onRemember,
   onDontRemember,
+  onNext,
+  onClose,
 }) => (
   <div className="flex flex-col items-center text-center gap-5 pt-2 pb-2">
     {/* Word display */}
@@ -198,27 +216,60 @@ const FrontFace: React.FC<FrontFaceProps> = ({
       )}
     </div>
 
-    <p className="text-sm font-semibold text-slate-600 dark:text-[#A5A8B5]">
-      Do you remember the meaning?
-    </p>
+    {!hasRemembered ? (
+      <>
+        <p className="text-sm font-semibold text-slate-600 dark:text-[#A5A8B5]">
+          Do you remember this word?
+        </p>
 
-    {/* Remember / Don't Remember */}
-    <div className="flex gap-3 w-full">
-      <button
-        type="button"
-        onClick={onDontRemember}
-        className="flex-1 py-3 rounded-2xl border-2 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 font-bold text-sm bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all active:scale-95"
-      >
-        😅 Don't Remember
-      </button>
-      <button
-        type="button"
-        onClick={onRemember}
-        className="flex-1 py-3 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95"
-      >
-        ✅ Remember
-      </button>
-    </div>
+        {/* Remember / Don't Remember buttons */}
+        <div className="flex gap-3 w-full">
+          <button
+            type="button"
+            onClick={onDontRemember}
+            className="flex-1 py-3 rounded-2xl border-2 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 font-bold text-sm bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all active:scale-95"
+          >
+            😅 Don't Remember
+          </button>
+          <button
+            type="button"
+            onClick={onRemember}
+            className="flex-1 py-3 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95"
+          >
+            ✅ Remember
+          </button>
+        </div>
+      </>
+    ) : (
+      /* Remembered Confirmation View */
+      <div className="w-full space-y-4 animate-fade-in">
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl p-4 text-left">
+          <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-1 flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4" /> Great job! Word marked as remembered.
+          </p>
+          <p className="text-xs text-slate-500 dark:text-[#A5A8B5] uppercase font-bold mt-2 mb-0.5">
+            Meaning
+          </p>
+          <div className="text-sm text-slate-700 dark:text-[#D1D4DE]">
+            <FormattedMeaning text={word.meaning} />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={showNext ? onNext : onClose}
+          className="w-full py-3 rounded-2xl bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm"
+        >
+          {showNext ? (
+            <>
+              Next Word <ArrowRight className="w-4 h-4" />
+            </>
+          ) : (
+            'Close'
+          )}
+        </button>
+      </div>
+    )}
   </div>
 );
 
@@ -385,4 +436,3 @@ const QuizFace: React.FC<QuizFaceProps> = ({
     </div>
   );
 };
-
