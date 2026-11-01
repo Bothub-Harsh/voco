@@ -2,6 +2,7 @@ import React from 'react';
 
 interface FormattedMeaningProps {
   text: string;
+  targetWord?: string;
   className?: string;
 }
 
@@ -31,18 +32,45 @@ function cleanStraySyntax(str: string): string {
     .replace(/\\/g, '');
 }
 
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Splits plain text to highlight targetWord if present.
+ */
+function highlightTargetInPlain(text: string, targetWord?: string, keyPrefix = 'sub'): React.ReactNode[] {
+  if (!targetWord || !targetWord.trim()) {
+    return [text];
+  }
+  const regex = new RegExp(`\\b(${escapeRegex(targetWord.trim())})\\b`, 'gi');
+  const parts = text.split(regex);
+  if (parts.length <= 1) return [text];
+
+  return parts.map((part, idx) => {
+    if (part.toLowerCase() === targetWord.trim().toLowerCase()) {
+      return (
+        <strong key={`${keyPrefix}-bold-${idx}`} className="font-bold text-slate-950 dark:text-white">
+          {part}
+        </strong>
+      );
+    }
+    return <React.Fragment key={`${keyPrefix}-txt-${idx}`}>{part}</React.Fragment>;
+  });
+}
+
 /**
  * Safely renders AI-generated vocabulary meanings and explanations with bold keyword formatting.
  * Robustly parses:
  * - **bold words** (including multiple occurrences: **word 1** and **word 2**)
  * - __bold words__
  * - Escaped markdown (\*\*word\*\*)
- * - Internal whitespace (** word **)
+ * - Target vocabulary word bold emphasis
  * - Hindi, English, and multilingual unicode characters
  *
  * Guaranteed: No raw ** or __ symbols are ever displayed to the user.
  */
-export const FormattedMeaning: React.FC<FormattedMeaningProps> = ({ text, className = '' }) => {
+export const FormattedMeaning: React.FC<FormattedMeaningProps> = ({ text, targetWord, className = '' }) => {
   if (!text || typeof text !== 'string') return null;
 
   const normalized = normalizeMarkdownText(text);
@@ -53,6 +81,11 @@ export const FormattedMeaning: React.FC<FormattedMeaningProps> = ({ text, classN
   // Check if there is at least one bold match
   if (!boldRegex.test(normalized)) {
     const cleanAll = cleanStraySyntax(normalized);
+    // Highlight targetWord if present
+    if (targetWord && targetWord.trim()) {
+      const nodes = highlightTargetInPlain(cleanAll, targetWord, 'single');
+      return <span className={className}>{nodes}</span>;
+    }
     return <span className={className}>{cleanAll}</span>;
   }
 
@@ -69,9 +102,10 @@ export const FormattedMeaning: React.FC<FormattedMeaningProps> = ({ text, classN
     if (match.index > lastIndex) {
       const plainText = cleanStraySyntax(normalized.slice(lastIndex, match.index));
       if (plainText) {
+        const highlighted = highlightTargetInPlain(plainText, targetWord, `seg-${keyIdx}`);
         elements.push(
           <React.Fragment key={`plain-${keyIdx++}`}>
-            {plainText}
+            {highlighted}
           </React.Fragment>
         );
       }
@@ -99,9 +133,10 @@ export const FormattedMeaning: React.FC<FormattedMeaningProps> = ({ text, classN
   if (lastIndex < normalized.length) {
     const trailingText = cleanStraySyntax(normalized.slice(lastIndex));
     if (trailingText) {
+      const highlighted = highlightTargetInPlain(trailingText, targetWord, `seg-trail-${keyIdx}`);
       elements.push(
         <React.Fragment key={`plain-${keyIdx++}`}>
-          {trailingText}
+          {highlighted}
         </React.Fragment>
       );
     }

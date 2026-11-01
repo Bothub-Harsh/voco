@@ -12,17 +12,18 @@ interface FlashcardScreenProps {
   allSavedWords?: VocabularyWord[];
   /** How many more pending notification words remain after this one */
   remainingCount: number;
-  /** Called when user finishes and is ready for the next word */
+  /** Called when user marks the word as remembered */
+  onRemember?: () => void;
+  /** Called when user clicks Next or finishes remembered word */
   onNext: () => void;
   /** Called to fully close the flashcard overlay */
   onClose: () => void;
-  /** Optional legacy callback for marking remembered */
-  onRemember?: () => void;
 }
 
 export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
   word,
   remainingCount,
+  onRemember,
   onNext,
   onClose,
 }) => {
@@ -57,6 +58,24 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
     }, 380);
   }, [isFlipping]);
 
+  const handleDontRemember = useCallback(() => {
+    // Return user to the front of the same card so they can try again
+    if (isFlipped) {
+      handleFlip();
+    }
+  }, [isFlipped, handleFlip]);
+
+  const handleRememberClick = useCallback(() => {
+    if (onRemember) {
+      onRemember();
+    }
+    if (showNext) {
+      onNext();
+    } else {
+      onClose();
+    }
+  }, [onRemember, showNext, onNext, onClose]);
+
   const handleSpeak = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -72,20 +91,20 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
   );
 
   const content = (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
       {/* Card container */}
       <div
         className="w-full sm:max-w-md bg-white dark:bg-[#1B1D25] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-[#3E4452] flex flex-col"
         style={{ maxHeight: '92dvh' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2.5 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] border border-indigo-100 dark:border-[#6554F5]/30">
               📖 Flashcard
             </span>
             {remainingCount > 0 && (
-              <span className="text-xs font-semibold text-slate-500 dark:text-[#A5A8B5]">
+              <span className="text-xs font-bold text-slate-500 dark:text-[#A5A8B5]">
                 +{remainingCount} more
               </span>
             )}
@@ -115,9 +134,9 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                 transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
               }}
             >
-              {/* ── FRONT FACE (Word + Tap to reveal meaning) ── */}
+              {/* ── FRONT FACE (Word + Question + Tap to reveal hint) ── */}
               <div
-                className={`w-full min-h-[220px] bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#232634] dark:via-[#1B1D25] dark:to-[#252834] rounded-2xl p-6 sm:p-8 border border-indigo-100 dark:border-[#3E4452] shadow-sm flex flex-col items-center justify-center text-center ${
+                className={`w-full min-h-[200px] bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#232634] dark:via-[#1B1D25] dark:to-[#252834] rounded-2xl p-6 border border-indigo-100 dark:border-[#3E4452] shadow-sm flex flex-col items-center justify-center text-center ${
                   isFlipped ? 'pointer-events-none' : ''
                 }`}
                 style={{
@@ -127,6 +146,10 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
               >
                 <p className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-[#F1F1F5] tracking-tight leading-tight">
                   {word.word}
+                </p>
+
+                <p className="text-sm font-semibold text-slate-600 dark:text-[#A5A8B5] mt-2">
+                  What does this word mean?
                 </p>
 
                 {ttsAvailable && (
@@ -142,14 +165,14 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                   </button>
                 )}
 
-                <div className="mt-6 px-3.5 py-1.5 rounded-full bg-indigo-50 dark:bg-[#6554F5]/15 border border-indigo-100 dark:border-[#6554F5]/30 text-xs font-bold text-[#6554F5] dark:text-[#8875F5]">
-                  👆 Tap to reveal meaning
+                <div className="mt-4 px-3.5 py-1.5 rounded-full bg-indigo-50 dark:bg-[#6554F5]/15 border border-indigo-100 dark:border-[#6554F5]/30 text-xs font-bold text-[#6554F5] dark:text-[#8875F5]">
+                  👆 Tap card to reveal answer
                 </div>
               </div>
 
-              {/* ── BACK FACE (Saved Meanings + Example) ── */}
+              {/* ── BACK FACE (Saved English & Hindi Meanings + Example) ── */}
               <div
-                className={`absolute inset-0 w-full min-h-[220px] bg-white dark:bg-[#1E202A] rounded-2xl p-5 border border-slate-200 dark:border-[#3E4452] shadow-sm flex flex-col justify-between overflow-y-auto ${
+                className={`absolute inset-0 w-full min-h-[200px] bg-white dark:bg-[#1E202A] rounded-2xl p-5 border border-slate-200 dark:border-[#3E4452] shadow-sm flex flex-col justify-between overflow-y-auto ${
                   !isFlipped ? 'pointer-events-none' : ''
                 }`}
                 style={{
@@ -158,14 +181,14 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                   transform: 'rotateY(180deg)',
                 }}
               >
-                <div className="space-y-3.5 text-left">
+                <div className="space-y-3 text-left">
                   {/* English Meaning */}
                   <div>
                     <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-[#8E92A4]">
                       English Meaning
                     </span>
                     <div className="text-sm sm:text-[15px] font-bold text-slate-900 dark:text-[#F1F1F5] mt-0.5 leading-snug">
-                      <FormattedMeaning text={word.meaning} />
+                      <FormattedMeaning text={word.meaning} targetWord={word.word} />
                     </div>
                   </div>
 
@@ -176,40 +199,58 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                         Hindi Meaning
                       </span>
                       <p className="text-sm font-semibold text-slate-800 dark:text-[#D1D4DE] mt-0.5 leading-snug">
-                        <FormattedMeaning text={word.hindiMeaning} />
+                        <FormattedMeaning text={word.hindiMeaning} targetWord={word.word} />
                       </p>
                     </div>
                   )}
 
                   {/* Example (if available) */}
                   {word.example && word.example.trim() && (
-                    <div className="bg-slate-50 dark:bg-[#15171E] rounded-xl p-3 border border-slate-100 dark:border-[#2D313E]">
+                    <div className="bg-slate-50 dark:bg-[#15171E] rounded-xl p-2.5 border border-slate-100 dark:border-[#2D313E]">
                       <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-[#8E92A4]">
                         Example
                       </span>
                       <p className="text-xs sm:text-sm text-slate-700 dark:text-[#CBD0DF] italic mt-0.5 leading-relaxed">
-                        <FormattedMeaning text={`"${word.example.trim()}"`} />
+                        <FormattedMeaning text={`"${word.example.trim()}"`} targetWord={word.word} />
                       </p>
                     </div>
                   )}
                 </div>
 
-                <p className="text-center text-[11px] font-semibold text-slate-400 dark:text-[#8E92A4] mt-3">
-                  👆 Tap to flip back
+                <p className="text-center text-[11px] font-semibold text-slate-400 dark:text-[#8E92A4] mt-2">
+                  👆 Tap card to flip back
                 </p>
               </div>
             </div>
           </div>
 
-          {/* ── Dynamic Bottom Button (Exactly ONE button: Next Word → or Close) ── */}
-          <div className="w-full mt-6">
+          {/* ── Practice Actions: Don't Remember & Remember ── */}
+          <div className="flex gap-3 w-full mt-4">
+            <button
+              type="button"
+              onClick={handleDontRemember}
+              className="flex-1 py-3 px-3 rounded-2xl border-2 border-slate-300 dark:border-[#3E4452] text-slate-800 dark:text-[#F1F1F5] font-bold text-sm bg-white dark:bg-[#252834] hover:bg-slate-50 dark:hover:bg-[#2E3240] transition-all active:scale-95 shadow-xs"
+            >
+              Don't Remember
+            </button>
+            <button
+              type="button"
+              onClick={handleRememberClick}
+              className="flex-1 py-3 px-3 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 text-emerald-700 dark:text-emerald-400 font-bold text-sm bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all active:scale-95 shadow-xs"
+            >
+              Remember
+            </button>
+          </div>
+
+          {/* ── Dynamic Bottom Navigation: Next or Close ── */}
+          <div className="w-full mt-2.5">
             {showNext ? (
               <button
                 type="button"
                 onClick={onNext}
                 className="w-full py-3.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] text-white font-bold text-sm rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
               >
-                <span>Next Word →</span>
+                <span>Next</span>
               </button>
             ) : (
               <button

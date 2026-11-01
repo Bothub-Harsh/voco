@@ -155,9 +155,12 @@ public class VocoNotificationPlugin extends Plugin {
             correctIndex = 0;
         }
 
+        String hindiMeaning = call.getString("hindiMeaning", "");
+        String hindiExample = call.getString("hindiExample", "");
+
         Context ctx = getContext();
-        // Standalone Test notification: passes isTest=true
-        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, null, null, optionsList, correctIndex, true);
+        // Standard notification delivery: uses exactly the same queue and navigation logic
+        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, hindiMeaning, hindiExample, optionsList, correctIndex, false);
 
         JSObject ret = new JSObject();
         ret.put("success", true);

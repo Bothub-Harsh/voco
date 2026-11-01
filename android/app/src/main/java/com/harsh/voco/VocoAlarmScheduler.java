@@ -398,10 +398,32 @@ public class VocoAlarmScheduler {
 
     /**
      * Sanitizes and returns the true active pending notification count.
-     * Prunes notifications older than 24h, and on API 23+ checks against active status bar notifications.
+     * Prunes notifications older than 24h.
      */
     public static int getPendingNotificationCount(Context context) {
         return sanitizePendingQueue(context).length();
+    }
+
+    /**
+     * Returns count of pending notification words other than currentWordId.
+     */
+    public static int getOtherPendingNotificationCount(Context context, String currentWordId) {
+        try {
+            org.json.JSONArray arr = sanitizePendingQueue(context);
+            int count = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.optJSONObject(i);
+                if (obj != null) {
+                    String wId = obj.optString("wordId", "");
+                    if (currentWordId == null || currentWordId.isEmpty() || !currentWordId.equals(wId)) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     public static org.json.JSONArray sanitizePendingQueue(Context context) {
@@ -435,12 +457,14 @@ public class VocoAlarmScheduler {
             for (int i = 0; i < arr.length(); i++) {
                 org.json.JSONObject item = arr.getJSONObject(i);
                 long timestamp = item.optLong("timestamp", 0);
-                if (now - timestamp > maxAgeMs) {
+                if (timestamp > 0 && now - timestamp > maxAgeMs) {
                     continue; // drop expired
                 }
 
+                // If active status bar notifications are present and the item is not brand-new (>5s),
+                // check if the notification was dismissed from the drawer without triggering receiver
                 int notifId = item.optInt("notifId", -1);
-                if (activeNotifIds != null && notifId != -1) {
+                if (activeNotifIds != null && !activeNotifIds.isEmpty() && notifId != -1 && (now - timestamp > 5000)) {
                     if (!activeNotifIds.contains(notifId)) {
                         continue; // notification is no longer in notification drawer
                     }
@@ -458,22 +482,37 @@ public class VocoAlarmScheduler {
         }
     }
 
-    public static org.json.JSONObject popNextPendingNotification(Context context) {
+    public static org.json.JSONObject popNextPendingNotification(Context context, String currentWordId) {
         try {
             SharedPreferences prefs = getPrefs(context);
             org.json.JSONArray arr = sanitizePendingQueue(context);
             if (arr.length() == 0) return null;
-            org.json.JSONObject first = arr.getJSONObject(0);
+
+            org.json.JSONObject target = null;
             org.json.JSONArray remaining = new org.json.JSONArray();
-            for (int i = 1; i < arr.length(); i++) {
-                remaining.put(arr.getJSONObject(i));
+
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject item = arr.getJSONObject(i);
+                String wId = item.optString("wordId", "");
+                if (target == null && (currentWordId == null || currentWordId.isEmpty() || !currentWordId.equals(wId))) {
+                    target = item;
+                } else {
+                    remaining.put(item);
+                }
             }
-            prefs.edit().putString(KEY_PENDING_QUEUE, remaining.toString()).apply();
-            return first;
+
+            if (target != null) {
+                prefs.edit().putString(KEY_PENDING_QUEUE, remaining.toString()).apply();
+            }
+            return target;
         } catch (Exception e) {
-            Log.e(TAG, "Error popping pending notification", e);
+            Log.e(TAG, "Error popping next pending notification", e);
             return null;
         }
+    }
+
+    public static org.json.JSONObject popNextPendingNotification(Context context) {
+        return popNextPendingNotification(context, null);
     }
 
     public static void showNotification(

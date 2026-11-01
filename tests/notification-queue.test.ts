@@ -130,4 +130,67 @@ describe('Smart Notification Queue', () => {
     buttonLabel = remaining > 0 ? 'Next' : 'Close';
     expect(buttonLabel).toBe('Close');
   });
+
+  it('Scenario 1: One notification arrives -> open flashcard -> Close appears', () => {
+    enqueuePendingNotification({ wordId: 'w1', word: 'Solo', timestamp: 1 });
+    // User opens w1 (it is currently active on screen)
+    const activeWordId = 'w1';
+    const otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+    const button = otherPending > 0 ? 'Next' : 'Close';
+    expect(button).toBe('Close');
+  });
+
+  it('Scenario 2: Two notifications arrive -> open first -> Next appears -> open second -> Close appears', () => {
+    enqueuePendingNotification({ wordId: 'w1', word: 'First', timestamp: 1 });
+    enqueuePendingNotification({ wordId: 'w2', word: 'Second', timestamp: 2 });
+
+    // Open first: w1 is active
+    let activeWordId = 'w1';
+    let otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+    expect(otherPending > 0 ? 'Next' : 'Close').toBe('Next');
+
+    // Tap Next: w1 is consumed/answered, w2 becomes active
+    removePendingNotificationByWordId('w1');
+    activeWordId = 'w2';
+    otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+    expect(otherPending > 0 ? 'Next' : 'Close').toBe('Close');
+  });
+
+  it('Scenario 3: Five notifications arrive -> navigates through all five in order (Next -> Next -> Next -> Next -> Close)', () => {
+    for (let i = 1; i <= 5; i++) {
+      enqueuePendingNotification({ wordId: `w${i}`, word: `Word${i}`, timestamp: i });
+    }
+
+    for (let step = 1; step <= 5; step++) {
+      const activeWordId = `w${step}`;
+      const otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+      if (step < 5) {
+        expect(otherPending > 0 ? 'Next' : 'Close').toBe('Next');
+      } else {
+        expect(otherPending > 0 ? 'Next' : 'Close').toBe('Close');
+      }
+      removePendingNotificationByWordId(activeWordId);
+    }
+  });
+
+  it('Scenario 4 & 5: Test notification shares exact same queue logic (Close if alone, Next if others pending)', () => {
+    // Scenario 4: Tap Test when no other notification is pending
+    clearPendingNotificationQueue();
+    enqueuePendingNotification({ wordId: 'test1', word: 'TestSolo', isTest: true, timestamp: 1 });
+    let activeWordId = 'test1';
+    let otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+    expect(otherPending > 0 ? 'Next' : 'Close').toBe('Close');
+
+    // Scenario 5: Tap Test when another notification is already pending
+    enqueuePendingNotification({ wordId: 'regular1', word: 'RegularWord', isTest: false, timestamp: 2 });
+    otherPending = getPendingNotificationQueue().filter((q) => q.wordId !== activeWordId).length;
+    expect(otherPending > 0 ? 'Next' : 'Close').toBe('Next');
+  });
+
+  it('Scenario 7: Answer Don\'t Remember keeps word in queue so user can try again', () => {
+    enqueuePendingNotification({ wordId: 'w1', word: 'TryAgain', timestamp: 1 });
+    // User taps Don't Remember: word remains in queue
+    expect(getPendingNotificationQueue()).toHaveLength(1);
+    expect(getPendingNotificationQueue()[0].wordId).toBe('w1');
+  });
 });

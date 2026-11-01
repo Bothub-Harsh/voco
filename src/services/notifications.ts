@@ -19,6 +19,8 @@ interface VocoSchedulerPlugin {
     word: string;
     meaning?: string;
     example?: string;
+    hindiMeaning?: string;
+    hindiExample?: string;
     options?: string;
     correctIndex?: number;
   }): Promise<{ success: boolean }>;
@@ -507,12 +509,14 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
   if (!Capacitor.isNativePlatform()) return false;
   try {
     await ensureNotificationChannel();
-    // On native Android, native scheduler manages its own queue with isTest=true
+    // On native Android, native scheduler manages its own queue with identical queue logic
     await VocoScheduler.sendTestNotification({
       wordId: word.id,
       word: word.word,
       meaning: word.meaning,
       example: word.example || '',
+      hindiMeaning: word.hindiMeaning || '',
+      hindiExample: word.hindiExample || '',
       options: JSON.stringify(word.options || []),
       correctIndex: typeof word.correctIndex === 'number' ? word.correctIndex : 0,
     });

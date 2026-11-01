@@ -51,6 +51,7 @@
                     android:layout_marginStart="8dp"
                     android:textColor="#64748B"
                     android:textSize="11sp"
+                    android:textStyle="bold"
                     android:visibility="gone" />
 
                 <View
@@ -73,20 +74,20 @@
                 android:id="@+id/layout_flip_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="14dp"
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- ── FRONT FACE (Word + Tap to reveal meaning) ── -->
+                <!-- ── FRONT FACE (Word + Question + Tap to reveal hint) ── -->
                 <LinearLayout
                     android:id="@+id/layout_card_front"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@drawable/bg_flip_card_inner"
                     android:gravity="center"
-                    android:minHeight="210dp"
+                    android:minHeight="190dp"
                     android:orientation="vertical"
-                    android:padding="24dp">
+                    android:padding="22dp">
 
                     <TextView
                         android:id="@+id/text_word"
@@ -95,39 +96,50 @@
                         android:gravity="center"
                         android:text="VOCABULARY"
                         android:textColor="#0F172A"
-                        android:textSize="30sp"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/text_question"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:text="What does this word mean?"
+                        android:textColor="#64748B"
+                        android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <!-- Subtle Flip Hint Pill -->
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
+                        android:layout_marginTop="16dp"
                         android:background="@drawable/bg_flip_hint_pill"
                         android:gravity="center"
                         android:orientation="horizontal"
                         android:paddingHorizontal="14dp"
-                        android:paddingVertical="7dp">
+                        android:paddingVertical="6dp">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="👆 Tap to reveal meaning"
+                            android:text="👆 Tap card to reveal answer"
                             android:textColor="#4F46E5"
                             android:textSize="12sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
 
-                <!-- ── BACK FACE (Saved Meanings + Example) ── -->
+                <!-- ── BACK FACE (Saved English & Hindi Meanings + Example) ── -->
                 <LinearLayout
                     android:id="@+id/layout_card_back"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@drawable/bg_flip_card_inner"
-                    android:minHeight="210dp"
+                    android:minHeight="190dp"
                     android:orientation="vertical"
-                    android:padding="20dp"
+                    android:padding="18dp"
                     android:visibility="gone">
 
                     <!-- English Meaning Section -->
@@ -148,7 +160,7 @@
                             android:id="@+id/text_back_meaning"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="3dp"
                             android:lineSpacingExtra="3dp"
                             android:text="Meaning definition"
                             android:textColor="#0F172A"
@@ -161,7 +173,7 @@
                         android:id="@+id/layout_back_hindi"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="10dp"
                         android:orientation="vertical"
                         android:visibility="gone">
 
@@ -177,7 +189,7 @@
                             android:id="@+id/text_back_hindi"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="3dp"
                             android:lineSpacingExtra="2dp"
                             android:text="Hindi meaning definition"
                             android:textColor="#1E293B"
@@ -189,7 +201,7 @@
                         android:id="@+id/layout_back_example"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="10dp"
                         android:background="@drawable/bg_quiz_example"
                         android:orientation="vertical"
                         android:padding="10dp"
@@ -207,7 +219,7 @@
                             android:id="@+id/text_back_example"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
+                            android:layout_marginTop="2dp"
                             android:lineSpacingExtra="2dp"
                             android:text="&quot;Example sentence using this vocabulary word.&quot;"
                             android:textColor="#334155"
@@ -219,21 +231,60 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
+                        android:layout_marginTop="12dp"
                         android:gravity="center"
-                        android:text="👆 Tap to flip back"
+                        android:text="👆 Tap card to flip back"
                         android:textColor="#94A3B8"
                         android:textSize="11sp" />
                 </LinearLayout>
             </FrameLayout>
 
-            <!-- ── DYNAMIC BOTTOM ACTION BUTTON (Exactly ONE button: Next Word → or Close) ── -->
+            <!-- ── REMEMBER / DON'T REMEMBER ACTION BUTTONS ── -->
+            <LinearLayout
+                android:id="@+id/layout_practice_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <!-- Don't Remember (Neutral White) -->
+                <Button
+                    android:id="@+id/btn_dont_remember"
+                    style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_dont_remember"
+                    android:text="Don't Remember"
+                    android:textAllCaps="false"
+                    android:textColor="#334155"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- Remember (Green) -->
+                <Button
+                    android:id="@+id/btn_remember"
+                    style="?android:attr/borderlessButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_remember"
+                    android:text="Remember"
+                    android:textAllCaps="false"
+                    android:textColor="#059669"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- ── DYNAMIC NAVIGATION BUTTON: Next or Close ── -->
             <Button
                 android:id="@+id/btn_bottom_action"
                 style="?android:attr/borderlessButtonStyle"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="18dp"
+                android:layout_height="46dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_btn_primary"
                 android:text="Close"
                 android:textAllCaps="false"

@@ -261,15 +261,18 @@ export function App() {
     if (activeFlashcard) {
       removePendingNotificationByWordId(activeFlashcard.id);
     }
-    const nextItem = dequeuePendingNotification();
-    refreshPendingQueue();
-    setActiveFlashcard(null);
-    if (nextItem) {
+    let nextWord: VocabularyWord | null = null;
+    while (!nextWord) {
+      const nextItem = dequeuePendingNotification();
+      if (!nextItem) break;
       const found = await getWordById(nextItem.wordId);
       if (found) {
-        setActiveFlashcard(found);
+        nextWord = found;
+        break;
       }
     }
+    refreshPendingQueue();
+    setActiveFlashcard(nextWord);
   }, [activeFlashcard, refreshPendingQueue]);
 
   const handleFlashcardClose = useCallback(() => {
@@ -491,10 +494,19 @@ export function App() {
     };
     window.addEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
 
+    // Keep notification queue fresh when resuming or when storage updates
+    const handleQueueSync = () => {
+      refreshPendingQueue();
+    };
+    document.addEventListener('visibilitychange', handleQueueSync);
+    window.addEventListener('storage', handleQueueSync);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
+      document.removeEventListener('visibilitychange', handleQueueSync);
+      window.removeEventListener('storage', handleQueueSync);
     };
   }, [refreshWords, checkUrlForQuiz, openFlashcardForWord, openQuizForWord]);
 
