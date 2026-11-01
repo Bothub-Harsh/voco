@@ -1,5 +1,8 @@
 package com.harsh.voco;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ObjectAnimator;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
@@ -12,7 +15,10 @@ import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -48,41 +54,26 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private String exampleSentence = "";
     private String hindiMeaning = "";
     private String hindiExample = "";
-    private List<String> options = new ArrayList<>();
-    private int correctIndex = 0;
     private boolean isTest = false;
     private int notificationId = -1;
 
-    private boolean isFlashcardMode = true;
-    private boolean hasAnswered = false;
+    // Flip card state
+    private boolean isShowingFront = true;
+    private boolean isFlipping = false;
 
     // Views
     private TextView textHeaderTag;
+    private TextView textPendingBadge;
+    private FrameLayout layoutFlipCard;
+    private LinearLayout layoutCardFront;
     private TextView textWord;
-
-    // Flashcard views
-    private LinearLayout layoutFlashcardPrompt;
-    private LinearLayout layoutFlashcardButtons;
-    private Button btnRemember;
-    private Button btnDontRemember;
-    private LinearLayout layoutRememberConfirmed;
-    private TextView textRememberedMeaning;
-    private Button btnRememberClose;
-
-    // Quiz views
-    private LinearLayout layoutQuizSection;
-    private LinearLayout[] optionLayouts = new LinearLayout[4];
-    private TextView[] optionBadges = new TextView[4];
-    private TextView[] optionTexts = new TextView[4];
-
-    private LinearLayout layoutFeedback;
-    private LinearLayout bannerResult;
-    private TextView textResultTitle;
-    private TextView textResultMeaning;
-    private LinearLayout layoutExample;
-    private TextView textExample;
-    private Button btnClose;
-    private Button btnOpenApp;
+    private LinearLayout layoutCardBack;
+    private TextView textBackMeaning;
+    private LinearLayout layoutBackHindi;
+    private TextView textBackHindi;
+    private LinearLayout layoutBackExample;
+    private TextView textBackExample;
+    private Button btnBottomAction;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,8 +113,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         setIntent(intent);
         readIntentData(intent);
         VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
-        isFlashcardMode = true;
-        hasAnswered = false;
+        resetToFront();
         initViews();
         applyResponsiveCardWidth();
     }
@@ -138,14 +128,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             hindiExample = intent.getStringExtra(EXTRA_HINDI_EXAMPLE);
             notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
             isTest = intent.getBooleanExtra(EXTRA_IS_TEST, false);
-
-            ArrayList<String> extraOpts = intent.getStringArrayListExtra(EXTRA_OPTIONS);
-            if (extraOpts != null && extraOpts.size() >= 4) {
-                options = extraOpts;
-            } else {
-                options = new ArrayList<>();
-            }
-            correctIndex = intent.getIntExtra(EXTRA_CORRECT_INDEX, 0);
         }
 
         if (wordText == null || wordText.isEmpty()) {
@@ -153,10 +135,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         }
         if (correctMeaning == null || correctMeaning.isEmpty()) {
             correctMeaning = "Learning vocabulary practice.";
-        }
-        if (options.size() < 4) {
-            options = fallbackOptions(correctMeaning);
-            correctIndex = 0;
         }
     }
 
@@ -191,183 +169,143 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         }
 
         textHeaderTag = findViewById(R.id.text_header_tag);
-        textWord = findViewById(R.id.text_word);
-        textWord.setText(wordText.toUpperCase());
-
+        textPendingBadge = findViewById(R.id.text_pending_badge);
         ImageView btnDismissX = findViewById(R.id.btn_dismiss_x);
         btnDismissX.setOnClickListener(v -> dismissQuiz());
 
-        // Flashcard components
-        layoutFlashcardPrompt = findViewById(R.id.layout_flashcard_prompt);
-        layoutFlashcardButtons = findViewById(R.id.layout_flashcard_buttons);
-        btnRemember = findViewById(R.id.btn_remember);
-        btnDontRemember = findViewById(R.id.btn_dont_remember);
-        layoutRememberConfirmed = findViewById(R.id.layout_remember_confirmed);
-        textRememberedMeaning = findViewById(R.id.text_remembered_meaning);
-        btnRememberClose = findViewById(R.id.btn_remember_close);
+        layoutFlipCard = findViewById(R.id.layout_flip_card);
+        layoutCardFront = findViewById(R.id.layout_card_front);
+        textWord = findViewById(R.id.text_word);
 
-        // Quiz components
-        layoutQuizSection = findViewById(R.id.layout_quiz_section);
-        optionLayouts[0] = findViewById(R.id.layout_option_a);
-        optionLayouts[1] = findViewById(R.id.layout_option_b);
-        optionLayouts[2] = findViewById(R.id.layout_option_c);
-        optionLayouts[3] = findViewById(R.id.layout_option_d);
+        layoutCardBack = findViewById(R.id.layout_card_back);
+        textBackMeaning = findViewById(R.id.text_back_meaning);
+        layoutBackHindi = findViewById(R.id.layout_back_hindi);
+        textBackHindi = findViewById(R.id.text_back_hindi);
+        layoutBackExample = findViewById(R.id.layout_back_example);
+        textBackExample = findViewById(R.id.text_back_example);
 
-        optionBadges[0] = findViewById(R.id.badge_option_a);
-        optionBadges[1] = findViewById(R.id.badge_option_b);
-        optionBadges[2] = findViewById(R.id.badge_option_c);
-        optionBadges[3] = findViewById(R.id.badge_option_d);
+        btnBottomAction = findViewById(R.id.btn_bottom_action);
 
-        optionTexts[0] = findViewById(R.id.text_option_a);
-        optionTexts[1] = findViewById(R.id.text_option_b);
-        optionTexts[2] = findViewById(R.id.text_option_c);
-        optionTexts[3] = findViewById(R.id.text_option_d);
+        // Flashcard Flip Listener: tapping either face or container triggers 3D flip
+        layoutFlipCard.setOnClickListener(v -> flipCard());
+        layoutCardFront.setOnClickListener(v -> flipCard());
+        layoutCardBack.setOnClickListener(v -> flipCard());
 
-        layoutFeedback = findViewById(R.id.layout_feedback);
-        bannerResult = findViewById(R.id.banner_result);
-        textResultTitle = findViewById(R.id.text_result_title);
-        textResultMeaning = findViewById(R.id.text_result_meaning);
-        layoutExample = findViewById(R.id.layout_example);
-        textExample = findViewById(R.id.text_example);
+        populateCardData();
+        updateBottomButton();
 
-        btnClose = findViewById(R.id.btn_close);
-        btnOpenApp = findViewById(R.id.btn_open_app);
-
-        // Initial state: Flashcard prompt visible, quiz section hidden
-        isFlashcardMode = true;
-        hasAnswered = false;
-
-        textHeaderTag.setText("VOCO FLASHCARD 📖");
-        layoutFlashcardPrompt.setVisibility(View.VISIBLE);
-        layoutFlashcardButtons.setVisibility(View.VISIBLE);
-        layoutRememberConfirmed.setVisibility(View.GONE);
-        layoutQuizSection.setVisibility(View.GONE);
-        layoutFeedback.setVisibility(View.GONE);
-
-        // FLASHCARD BUTTONS
-        btnRemember.setOnClickListener(v -> handleRememberClicked());
-        btnDontRemember.setOnClickListener(v -> handleDontRememberClicked());
-
-        // Prepare quiz options (ready if user taps 'Don't Remember')
-        for (int i = 0; i < 4; i++) {
-            optionTexts[i].setText(formatMarkdown(options.get(i)));
-            optionLayouts[i].setBackgroundResource(R.drawable.bg_quiz_option_default);
-            optionLayouts[i].setClickable(true);
-            optionLayouts[i].setFocusable(true);
-
-            optionBadges[i].setBackgroundResource(R.drawable.bg_quiz_badge_default);
-            optionBadges[i].setTextColor(Color.parseColor("#475569"));
-
-            final int index = i;
-            optionLayouts[i].setOnClickListener(v -> handleOptionSelected(index));
-        }
-
-        btnOpenApp.setOnClickListener(v -> openMainVocoApp());
-        btnClose.setOnClickListener(v -> dismissQuiz());
-    }
-
-    /**
-     * Remember flow:
-     * User remembers the word. Record progress, remove from pending queue,
-     * and check remaining queue. If more words pending, show Next button;
-     * otherwise show Close button.
-     */
-    private void handleRememberClicked() {
-        recordQuizStats(wordText, true);
-        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
-
-        layoutFlashcardButtons.setVisibility(View.GONE);
-        layoutRememberConfirmed.setVisibility(View.VISIBLE);
-        textRememberedMeaning.setText(formatMarkdown(correctMeaning));
-
-        int remaining = VocoAlarmScheduler.getPendingNotificationCount(this);
-
-        if (!isTest && remaining > 0) {
-            btnRememberClose.setText("Next Word (" + remaining + ")");
-            btnRememberClose.setOnClickListener(v -> handleNextPendingWord());
-        } else {
-            btnRememberClose.setText("Close");
-            btnRememberClose.setOnClickListener(v -> dismissQuiz());
-        }
-    }
-
-    /**
-     * Don't Remember flow:
-     * Transition from Flashcard view to Multiple-Choice Quiz view.
-     */
-    private void handleDontRememberClicked() {
-        isFlashcardMode = false;
-        textHeaderTag.setText("VOCO PRACTICE ❓");
-        layoutFlashcardPrompt.setVisibility(View.GONE);
-        layoutQuizSection.setVisibility(View.VISIBLE);
-    }
-
-    private void handleOptionSelected(int chosenIndex) {
-        if (hasAnswered) return;
-        hasAnswered = true;
-
-        for (LinearLayout layout : optionLayouts) {
-            layout.setClickable(false);
-            layout.setFocusable(false);
-        }
-
-        boolean isCorrect = (chosenIndex == correctIndex);
-        recordQuizStats(wordText, isCorrect);
-        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
-
-        if (isCorrect) {
-            optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_correct);
-            optionBadges[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_badge_correct);
-            optionBadges[chosenIndex].setTextColor(Color.WHITE);
-
-            bannerResult.setBackgroundResource(R.drawable.bg_feedback_correct);
-            textResultTitle.setText("Correct! 🎉");
-            textResultTitle.setTextColor(Color.parseColor("#065F46"));
-            textResultMeaning.setTextColor(Color.parseColor("#047857"));
-            textResultMeaning.setText(formatMarkdown(correctMeaning));
-        } else {
-            optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_incorrect);
-            optionBadges[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_badge_incorrect);
-            optionBadges[chosenIndex].setTextColor(Color.WHITE);
-
-            optionLayouts[correctIndex].setBackgroundResource(R.drawable.bg_quiz_option_correct);
-            optionBadges[correctIndex].setBackgroundResource(R.drawable.bg_quiz_badge_correct);
-            optionBadges[correctIndex].setTextColor(Color.WHITE);
-
-            bannerResult.setBackgroundResource(R.drawable.bg_feedback_incorrect);
-            textResultTitle.setText("Correct Answer");
-            textResultTitle.setTextColor(Color.parseColor("#9F1239"));
-            textResultMeaning.setTextColor(Color.parseColor("#1E293B"));
-
-            StringBuilder sb = new StringBuilder(correctMeaning);
-            if (hindiMeaning != null && !hindiMeaning.trim().isEmpty()) {
-                sb.append("\n\n🇮🇳 ").append(hindiMeaning.trim());
+        // Bottom Action Button Listener
+        btnBottomAction.setOnClickListener(v -> {
+            int remaining = VocoAlarmScheduler.getPendingNotificationCount(this);
+            if (!isTest && remaining > 0) {
+                handleNextPendingWord();
+            } else {
+                dismissQuiz();
             }
-            textResultMeaning.setText(formatMarkdown(sb.toString()));
+        });
+    }
+
+    private void populateCardData() {
+        textWord.setText(wordText.toUpperCase());
+
+        // Back: English Meaning
+        textBackMeaning.setText(formatMarkdown(correctMeaning));
+
+        // Back: Hindi Meaning (gracefully hidden if missing)
+        if (hindiMeaning != null && !hindiMeaning.trim().isEmpty()) {
+            layoutBackHindi.setVisibility(View.VISIBLE);
+            textBackHindi.setText(formatMarkdown(hindiMeaning.trim()));
+        } else {
+            layoutBackHindi.setVisibility(View.GONE);
         }
 
+        // Back: Example sentence (gracefully hidden if missing)
         if (exampleSentence != null && !exampleSentence.trim().isEmpty()) {
-            textExample.setText(formatMarkdown("\"" + exampleSentence.trim() + "\""));
-            layoutExample.setVisibility(View.VISIBLE);
+            layoutBackExample.setVisibility(View.VISIBLE);
+            textBackExample.setText(formatMarkdown("\"" + exampleSentence.trim() + "\""));
         } else {
-            layoutExample.setVisibility(View.GONE);
+            layoutBackExample.setVisibility(View.GONE);
         }
+    }
 
-        layoutFeedback.setVisibility(View.VISIBLE);
-
-        // Check true remaining pending count
+    private void updateBottomButton() {
         int remaining = VocoAlarmScheduler.getPendingNotificationCount(this);
+
         if (!isTest && remaining > 0) {
-            btnClose.setText("Next Word (" + remaining + ")");
-            btnClose.setOnClickListener(v -> handleNextPendingWord());
+            btnBottomAction.setText("Next Word →");
+            btnBottomAction.setBackgroundResource(R.drawable.bg_btn_primary);
+            btnBottomAction.setTextColor(Color.WHITE);
+            textPendingBadge.setVisibility(View.VISIBLE);
+            textPendingBadge.setText("+" + remaining + " more");
         } else {
-            btnClose.setText("Close");
-            btnClose.setOnClickListener(v -> dismissQuiz());
+            btnBottomAction.setText("Close");
+            btnBottomAction.setBackgroundResource(R.drawable.bg_btn_primary);
+            btnBottomAction.setTextColor(Color.WHITE);
+            textPendingBadge.setVisibility(View.GONE);
         }
     }
 
     /**
-     * Loads the next pending word from queue and restarts with a fresh flashcard!
+     * Smooth 3D Flip Animation between Front and Back faces
+     */
+    private void flipCard() {
+        if (isFlipping) return;
+        isFlipping = true;
+
+        final View visibleCard = isShowingFront ? layoutCardFront : layoutCardBack;
+        final View invisibleCard = isShowingFront ? layoutCardBack : layoutCardFront;
+
+        float scale = getResources().getDisplayMetrics().density;
+        float cameraDistance = 8000f * scale;
+        layoutFlipCard.setCameraDistance(cameraDistance);
+        visibleCard.setCameraDistance(cameraDistance);
+        invisibleCard.setCameraDistance(cameraDistance);
+
+        ObjectAnimator flipOut = ObjectAnimator.ofFloat(visibleCard, "rotationY", 0f, 90f);
+        flipOut.setDuration(180);
+        flipOut.setInterpolator(new AccelerateInterpolator());
+
+        ObjectAnimator flipIn = ObjectAnimator.ofFloat(invisibleCard, "rotationY", -90f, 0f);
+        flipIn.setDuration(180);
+        flipIn.setInterpolator(new DecelerateInterpolator());
+
+        flipOut.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                visibleCard.setVisibility(View.GONE);
+                invisibleCard.setVisibility(View.VISIBLE);
+                invisibleCard.setRotationY(-90f);
+                flipIn.start();
+            }
+        });
+
+        flipIn.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                isShowingFront = !isShowingFront;
+                isFlipping = false;
+                recordQuizStats(wordText);
+            }
+        });
+
+        flipOut.start();
+    }
+
+    private void resetToFront() {
+        isShowingFront = true;
+        isFlipping = false;
+        if (layoutCardFront != null) {
+            layoutCardFront.setVisibility(View.VISIBLE);
+            layoutCardFront.setRotationY(0f);
+        }
+        if (layoutCardBack != null) {
+            layoutCardBack.setVisibility(View.GONE);
+            layoutCardBack.setRotationY(0f);
+        }
+    }
+
+    /**
+     * Pops and displays the next pending word from the queue.
      */
     private void handleNextPendingWord() {
         org.json.JSONObject nextItem = VocoAlarmScheduler.popNextPendingNotification(this);
@@ -390,24 +328,12 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         exampleSentence = nextItem.optString("example", "");
         hindiMeaning = nextItem.optString("hindiMeaning", "");
         hindiExample = nextItem.optString("hindiExample", "");
-        correctIndex = nextItem.optInt("correctIndex", 0);
         notificationId = nextNotifId;
         isTest = nextItem.optBoolean("isTest", false);
 
-        options = new ArrayList<>();
-        org.json.JSONArray opts = nextItem.optJSONArray("options");
-        if (opts != null && opts.length() >= 4) {
-            for (int i = 0; i < opts.length(); i++) {
-                options.add(opts.optString(i));
-            }
-        } else {
-            options = fallbackOptions(correctMeaning);
-            correctIndex = 0;
-        }
-
-        isFlashcardMode = true;
-        hasAnswered = false;
-        initViews();
+        resetToFront();
+        populateCardData();
+        updateBottomButton();
     }
 
     /**
@@ -437,39 +363,20 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         }
     }
 
-    private void openMainVocoApp() {
-        Intent mainIntent = new Intent(this, MainActivity.class);
-        mainIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        if (wordId != null && !wordId.isEmpty()) {
-            mainIntent.putExtra("quizWordId", wordId);
-        }
-        startActivity(mainIntent);
-        dismissQuiz();
-    }
-
-    private void recordQuizStats(String word, boolean isCorrect) {
+    private void recordQuizStats(String word) {
         try {
             SharedPreferences prefs = getSharedPreferences(PREFS_QUIZ_STATS, MODE_PRIVATE);
             int total = prefs.getInt(KEY_TOTAL_ANSWERED, 0) + 1;
-            int correct = prefs.getInt(KEY_CORRECT_ANSWERED, 0) + (isCorrect ? 1 : 0);
+            int correct = prefs.getInt(KEY_CORRECT_ANSWERED, 0) + 1;
 
             prefs.edit()
                 .putInt(KEY_TOTAL_ANSWERED, total)
                 .putInt(KEY_CORRECT_ANSWERED, correct)
                 .putString(KEY_LAST_RESULT_WORD, word)
-                .putBoolean(KEY_LAST_RESULT_CORRECT, isCorrect)
+                .putBoolean(KEY_LAST_RESULT_CORRECT, true)
                 .putLong(KEY_LAST_RESULT_TIME, System.currentTimeMillis())
                 .apply();
         } catch (Exception ignored) {
         }
-    }
-
-    private List<String> fallbackOptions(String meaning) {
-        List<String> list = new ArrayList<>();
-        list.add(meaning);
-        list.add("Showing steady emotional poise and calmness during turbulent times.");
-        list.add("Relating to cultural traditions, social customs, and collective behaviour.");
-        list.add("Existing or continuing for only a brief and fleeting duration of time.");
-        return list;
     }
 }
