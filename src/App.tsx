@@ -17,7 +17,8 @@ import {
   refreshVocabularyFromAI,
   checkBackendStatus,
   isNetworkOrOfflineError,
-  generateStoryFromAI,
+  generateStoryFromAIStream,
+  checkStoryCooldown,
 } from './services/api';
 import { generateFreshQuizSession, shuffleArray } from './services/quizGenerator';
 import {
@@ -111,6 +112,21 @@ export function App() {
   const [storyResult, setStoryResult] = useState<StoryResult | null>(null);
   const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
   const [storyError, setStoryError] = useState<string | null>(null);
+  const [storyProgressPercent, setStoryProgressPercent] = useState<number>(0);
+  const [storyProgressStatus, setStoryProgressStatus] = useState<string>('Preparing your vocabulary...');
+  const [storyCooldownSeconds, setStoryCooldownSeconds] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('voco_story_last_completed_timestamp');
+      if (saved) {
+        const lastTime = parseInt(saved, 10);
+        const elapsedSec = Math.floor((Date.now() - lastTime) / 1000);
+        if (elapsedSec < 300) {
+          return 300 - elapsedSec;
+        }
+      }
+    } catch {}
+    return 0;
+  });
 
   const refreshPendingQueue = useCallback(() => {
     setPendingNotificationQueue(getPendingNotificationQueue());
@@ -264,27 +280,75 @@ export function App() {
     setActiveFlashcard(null);
   }, []);
 
+  // ─── Story Cooldown Timer Ticker (Updates every second) ───
+  useEffect(() => {
+    if (storyCooldownSeconds <= 0) return;
+
+    const intervalId = setInterval(() => {
+      setStoryCooldownSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [storyCooldownSeconds]);
+
+  // Check backend cooldown on load
+  useEffect(() => {
+    checkStoryCooldown()
+      .then((serverCooldown) => {
+        if (serverCooldown > 0) {
+          setStoryCooldownSeconds((cur) => Math.max(cur, serverCooldown));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // ─── Story Generator Handlers ───
   const handleCreateStory = useCallback(async () => {
     if (wordsRef.current.length < 2) {
       alert('Save at least 2 words to generate a story.');
       return;
     }
+
+    if (storyCooldownSeconds > 0) {
+      alert(`Story cooldown active. Please wait ${storyCooldownSeconds} seconds.`);
+      return;
+    }
+
     setIsGeneratingStory(true);
     setStoryError(null);
     setStoryResult(null);
+    setStoryProgressPercent(0);
+    setStoryProgressStatus('Preparing your vocabulary...');
 
     const wordPayload = wordsRef.current.map((w) => ({ word: w.word, meaning: w.meaning }));
     try {
-      const result = await generateStoryFromAI(wordPayload);
+      const result = await generateStoryFromAIStream(wordPayload, (percent, status) => {
+        setStoryProgressPercent(percent);
+        setStoryProgressStatus(status);
+      });
       setStoryResult(result);
+      setStoryProgressPercent(100);
+      setStoryProgressStatus('Story ready!');
+
+      // Set 5-minute cooldown (300 seconds) in state and localStorage
+      const now = Date.now();
+      try {
+        localStorage.setItem('voco_story_last_completed_timestamp', now.toString());
+      } catch {}
+      setStoryCooldownSeconds(300);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate story. Please try again.';
       setStoryError(msg);
     } finally {
       setIsGeneratingStory(false);
     }
-  }, []);
+  }, [storyCooldownSeconds]);
 
   const handleCloseStory = useCallback(() => {
     setStoryResult(null);
@@ -1051,6 +1115,7 @@ export function App() {
                 onOpenQuiz={(word) => openQuizForWord(word)}
                 onPracticeAll={handleStartPracticeAll}
                 onCreateStory={handleCreateStory}
+                storyCooldownSeconds={storyCooldownSeconds}
                 onDeleteWord={handleDeleteWord}
                 onDeleteBatch={handleDeleteBatch}
                 onUpdateWord={handleUpdateWord}
@@ -1150,7 +1215,11 @@ export function App() {
         <StoryModal
           story={storyResult}
           isGenerating={isGeneratingStory}
+          progressPercent={storyProgressPercent}
+          progressStatus={storyProgressStatus}
           error={storyError}
+          cooldownSeconds={storyCooldownSeconds}
+          totalSavedWords={words.length}
           onRegenerate={handleCreateStory}
           onClose={handleCloseStory}
         />

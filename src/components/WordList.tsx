@@ -15,6 +15,7 @@ import {
   CheckSquare,
   CheckCircle2,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import type { VocabularyWord } from '../types';
 import { EditWordModal } from './EditWordModal';
@@ -26,6 +27,7 @@ interface WordListProps {
   onOpenQuiz: (word: VocabularyWord) => void;
   onPracticeAll?: () => void;
   onCreateStory?: () => void;
+  storyCooldownSeconds?: number;
   onDeleteWord: (id: string, word: string) => Promise<void>;
   onDeleteBatch?: (ids: string[]) => Promise<void>;
   onUpdateWord: (word: VocabularyWord) => Promise<void>;
@@ -41,6 +43,7 @@ export const WordList: React.FC<WordListProps> = ({
   onOpenQuiz,
   onPracticeAll,
   onCreateStory,
+  storyCooldownSeconds = 0,
   onDeleteWord,
   onDeleteBatch,
   onUpdateWord,
@@ -382,14 +385,32 @@ export const WordList: React.FC<WordListProps> = ({
             <span>Practice All Words ({words.length})</span>
           </button>
           {onCreateStory && words.length >= 2 && (
-            <button
-              type="button"
-              onClick={onCreateStory}
-              className="w-full py-2.5 px-4 bg-white dark:bg-[#1B1D25] border-2 border-[#6554F5]/50 dark:border-[#8875F5]/40 hover:border-[#6554F5] dark:hover:border-[#8875F5] hover:bg-indigo-50/50 dark:hover:bg-[#252834] text-[#6554F5] dark:text-[#8875F5] rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2"
-            >
-              <span>📖</span>
-              <span>Create Story</span>
-            </button>
+            storyCooldownSeconds > 0 ? (
+              <button
+                type="button"
+                disabled={true}
+                className="w-full py-2.5 px-4 bg-slate-100 dark:bg-[#1A1C24] border border-slate-300 dark:border-[#3E4452] text-slate-500 dark:text-[#A5A8B5] rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm cursor-not-allowed opacity-80 flex items-center justify-center space-x-2"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>
+                  Create another story in{' '}
+                  {`${Math.floor(storyCooldownSeconds / 60)
+                    .toString()
+                    .padStart(2, '0')}:${(storyCooldownSeconds % 60)
+                    .toString()
+                    .padStart(2, '0')}`}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onCreateStory}
+                className="w-full py-2.5 px-4 bg-white dark:bg-[#1B1D25] border-2 border-[#6554F5]/50 dark:border-[#8875F5]/40 hover:border-[#6554F5] dark:hover:border-[#8875F5] hover:bg-indigo-50/50 dark:hover:bg-[#252834] text-[#6554F5] dark:text-[#8875F5] rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2"
+              >
+                <span>📖</span>
+                <span>Create Story</span>
+              </button>
+            )
           )}
         </div>
       )}

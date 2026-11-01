@@ -602,12 +602,39 @@ export async function generateQuizDistractorsFromAI(
 }
 
 /**
- * Calls the backend Groq proxy to generate a connected story using all saved vocabulary words.
- * Returns { title, story, wordsUsed } where each vocab word is bolded with **word** markdown.
+ * Checks remaining story generation cooldown from the backend in seconds.
  */
-export async function generateStoryFromAI(
-  words: { word: string; meaning: string }[]
-): Promise<{ title: string; story: string; wordsUsed: { word: string; meaning: string }[] }> {
+export async function checkStoryCooldown(): Promise<number> {
+  try {
+    const base = getApiBaseUrl();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`${base}/api/story/cooldown`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return 0;
+    const data = await res.json();
+    return typeof data.cooldownSeconds === 'number' ? data.cooldownSeconds : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export interface StoryGenerationResult {
+  title: string;
+  story: string;
+  wordsUsed: { word: string; meaning: string }[];
+  wordsUsedCount: number;
+  totalWords: number;
+}
+
+/**
+ * Calls backend Groq proxy with real-time SSE progress streaming.
+ * Multi-stage generation supports 5 to 150+ vocabulary words without context or token overflow.
+ */
+export async function generateStoryFromAIStream(
+  words: { word: string; meaning: string }[],
+  onProgress: (percent: number, status: string) => void
+): Promise<StoryGenerationResult> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     throw new Error('No internet connection. Please check your network.');
   }
@@ -617,7 +644,113 @@ export async function generateStoryFromAI(
 
   const base = getApiBaseUrl();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // Allow up to 3 minutes for large 100+ word stories
+  const timeoutId = setTimeout(() => controller.abort(), 180000);
+
+  try {
+    onProgress(3, 'Connecting to story engine...');
+
+    const response = await fetch(`${base}/api/story/generate-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ words }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => null);
+      if (response.status === 429) {
+        throw new Error(errData?.error || 'Cooldown active: Please wait before generating another story.');
+      }
+      throw new Error(errData?.error || `Story generation failed with HTTP ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error('No stream response from server. Falling back...');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: StoryGenerationResult | null = null;
+    let streamError: string | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+        const jsonStr = trimmed.slice(6).trim();
+        if (!jsonStr) continue;
+
+        try {
+          const event = JSON.parse(jsonStr);
+          if (event.type === 'progress') {
+            if (typeof event.percent === 'number' && typeof event.status === 'string') {
+              onProgress(Math.min(99, Math.max(0, event.percent)), event.status);
+            }
+          } else if (event.type === 'complete') {
+            finalResult = {
+              title: event.title || 'Vocabulary Adventure',
+              story: event.story || '',
+              wordsUsed: Array.isArray(event.wordsUsed) ? event.wordsUsed : words,
+              wordsUsedCount: typeof event.wordsUsedCount === 'number' ? event.wordsUsedCount : words.length,
+              totalWords: typeof event.totalWords === 'number' ? event.totalWords : words.length,
+            };
+          } else if (event.type === 'error') {
+            streamError = event.message || 'Error occurred during story generation.';
+          }
+        } catch {
+          // Ignore invalid parse chunks
+        }
+      }
+    }
+
+    if (streamError) {
+      throw new Error(streamError);
+    }
+
+    if (!finalResult || !finalResult.story) {
+      throw new Error('Server completed generation without producing a story.');
+    }
+
+    return finalResult;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrOfflineError(err)) {
+      throw new Error('No internet connection. Please check your network.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Calls the backend Groq proxy to generate a connected story using all saved vocabulary words.
+ * Returns { title, story, wordsUsed, wordsUsedCount, totalWords }.
+ */
+export async function generateStoryFromAI(
+  words: { word: string; meaning: string }[]
+): Promise<StoryGenerationResult> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new Error('No internet connection. Please check your network.');
+  }
+  if (!words || words.length === 0) {
+    throw new Error('No vocabulary words to generate a story from.');
+  }
+
+  const base = getApiBaseUrl();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   let response: Response;
   try {
@@ -640,7 +773,7 @@ export async function generateStoryFromAI(
 
   if (!response.ok) {
     if (response.status === 429) {
-      throw new Error('AI rate limit reached. Please wait a moment and try again.');
+      throw new Error(data?.error || 'AI rate limit reached. Please wait a moment and try again.');
     }
     const message = data?.error || `Story generation failed with HTTP ${response.status}`;
     throw new Error(message);
@@ -654,5 +787,7 @@ export async function generateStoryFromAI(
     title: data.title,
     story: data.story,
     wordsUsed: Array.isArray(data.wordsUsed) ? data.wordsUsed : words,
+    wordsUsedCount: typeof data.wordsUsedCount === 'number' ? data.wordsUsedCount : (data.wordsUsed?.length || words.length),
+    totalWords: typeof data.totalWords === 'number' ? data.totalWords : words.length,
   };
 }

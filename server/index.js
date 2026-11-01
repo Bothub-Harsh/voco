@@ -550,11 +550,331 @@ Respond ONLY with a valid JSON object:
   }
 });
 
-// ─── AI Story Generator ───
-app.post('/api/story/generate', async (req, res) => {
-  try {
-    const { words } = req.body;
+// ─── AI Story Generator Helper Functions & Cooldown Management ───
+const storyCooldowns = new Map();
+const STORY_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
+function getClientIdentifier(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return String(forwarded).split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || req.ip || 'anonymous-client';
+}
+
+function getRemainingCooldown(req) {
+  const clientKey = getClientIdentifier(req);
+  const lastTime = storyCooldowns.get(clientKey);
+  if (!lastTime) return 0;
+  const elapsed = Date.now() - lastTime;
+  if (elapsed >= STORY_COOLDOWN_MS) {
+    storyCooldowns.delete(clientKey);
+    return 0;
+  }
+  return Math.ceil((STORY_COOLDOWN_MS - elapsed) / 1000);
+}
+
+function recordSuccessfulStory(req) {
+  const clientKey = getClientIdentifier(req);
+  storyCooldowns.set(clientKey, Date.now());
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Robust Groq call with retries and exponential backoff.
+ */
+async function callGroqWithRetry(apiKey, messages, { maxTokens = 2000, temperature = 0.8, preferredModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'] } = {}) {
+  let lastError = null;
+
+  for (const model of preferredModels) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 55000);
+
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.status === 429) {
+          // Rate limit - wait with backoff
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          continue;
+        }
+
+        if (res.status >= 500) {
+          // Server error - wait or try next attempt
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.error?.message || `Groq API responded with HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        const content = data?.choices?.[0]?.message?.content?.trim() || '';
+        if (content) return content;
+      } catch (err) {
+        lastError = err;
+        if (err.name === 'AbortError') {
+          // Timeout, break to next model
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  }
+
+  throw lastError || new Error('All Groq candidate models failed to respond.');
+}
+
+/**
+ * Intelligent multi-stage story generator supporting 5 to 150+ vocabulary words.
+ */
+async function executeMultiStageStoryGeneration(apiKey, words, onProgress) {
+  const cleanWords = words
+    .filter((w) => w && w.word)
+    .map((w) => ({
+      word: String(w.word).trim(),
+      meaning: String(w.meaning || '').trim(),
+    }));
+
+  if (cleanWords.length === 0) {
+    throw new Error('No valid vocabulary words provided.');
+  }
+
+  const totalWords = cleanWords.length;
+  onProgress(5, 'Preparing your vocabulary...');
+
+  // Divide words into manageable chunks of at most 20 words to prevent token / context overflow
+  const CHUNK_SIZE = 20;
+  const chunks = [];
+  for (let i = 0; i < cleanWords.length; i += CHUNK_SIZE) {
+    chunks.push(cleanWords.slice(i, i + CHUNK_SIZE));
+  }
+
+  const numChunks = chunks.length;
+  let storyTitle = 'An Unexpected Vocabulary Journey';
+  let storylineConcept = '';
+  const storySections = [];
+
+  // Stage 1: Overall storyline & title planning (5% - 15%)
+  onProgress(10, 'Creating your storyline...');
+
+  const sampleWordsList = cleanWords
+    .slice(0, Math.min(15, cleanWords.length))
+    .map((w) => `"${w.word}"`)
+    .join(', ');
+
+  const conceptPrompt = `You are a master fiction author and vocabulary teacher.
+We will write ONE continuous, engaging, funny, and heartwarming story for English learners that naturally includes ${totalWords} vocabulary words.
+
+Sample vocabulary words include: ${sampleWordsList}.
+
+Please create an overarching story concept:
+1. A catchy, fun title (maximum 5 words, do NOT use asterisks).
+2. The main character(s), unique setting, and central mission/adventure.
+
+Respond ONLY with valid JSON:
+{
+  "title": "A Great Catchy Title",
+  "concept": "2-3 sentences outlining the characters, setting, and fun central premise."
+}`;
+
+  try {
+    const conceptRaw = await callGroqWithRetry(
+      apiKey,
+      [
+        { role: 'system', content: 'You are a creative author. Respond in valid JSON only.' },
+        { role: 'user', content: conceptPrompt },
+      ],
+      { maxTokens: 400, temperature: 0.8 }
+    );
+    const cleaned = cleanJsonContent(conceptRaw);
+    const parsed = JSON.parse(cleaned);
+    if (parsed.title) storyTitle = parsed.title.replace(/\*\*/g, '').trim();
+    if (parsed.concept) storylineConcept = parsed.concept.trim();
+  } catch {
+    storylineConcept = 'A quirky young adventurer sets off on a comical quest filled with unexpected challenges.';
+  }
+
+  // Stage 2: Sequential section generation (15% - 80%)
+  for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    const chunkPct = 15 + Math.round(((chunkIndex) / numChunks) * 65);
+    const statusMsg =
+      numChunks === 1
+        ? 'Writing your story...'
+        : `Writing story (${chunkIndex + 1}/${numChunks})...`;
+
+    onProgress(chunkPct, statusMsg);
+
+    const chunkWordList = chunk.map((w) => `- ${w.word}: ${w.meaning}`).join('\n');
+    const isFirst = chunkIndex === 0;
+    const isLast = chunkIndex === numChunks - 1;
+
+    let sectionPrompt = '';
+    if (isFirst) {
+      sectionPrompt = `Story Title: "${storyTitle}"
+Premise: ${storylineConcept}
+
+Task: Write the opening section of this continuous story.
+You MUST naturally include the following ${chunk.length} vocabulary words:
+${chunkWordList}
+
+CRITICAL RULES:
+1. Every time you use one of these vocabulary words, enclose it in double asterisks like **word**.
+2. Keep the writing natural, fun, engaging, and in simple everyday English for learners.
+3. Use 1 or 2 emojis naturally.
+4. Do NOT introduce chapter headings or "Part 1". Just start the story narrative directly.
+${isLast ? 'Complete the entire story naturally.' : 'End this section at a natural transition point leading to the next event.'}
+Approximate length: ${Math.max(120, chunk.length * 20)} words.`;
+    } else {
+      // For continuation, pass previous section context
+      const prevContext = storySections[storySections.length - 1].slice(-400);
+      sectionPrompt = `Story Title: "${storyTitle}"
+Overall Premise: ${storylineConcept}
+Story So Far (last part):
+"...${prevContext}"
+
+Task: Continue this exact story seamlessly. Maintain the same characters, setting, and fun tone.
+You MUST naturally integrate these next ${chunk.length} vocabulary words:
+${chunkWordList}
+
+CRITICAL RULES:
+1. Every time you use one of these vocabulary words, enclose it in double asterisks like **word**.
+2. Do NOT write "Part ${chunkIndex + 1}" or any chapter headings. Continue the prose seamlessly.
+3. Keep the writing natural, engaging, and suitable for learners.
+${isLast ? 'Bring the adventure to a satisfying, funny, or uplifting conclusion.' : 'End at a natural cliffhanger or transition.'}
+Approximate length: ${Math.max(120, chunk.length * 20)} words.`;
+    }
+
+    const sectionContent = await callGroqWithRetry(
+      apiKey,
+      [
+        {
+          role: 'system',
+          content:
+            'You are a brilliant fiction writer for English learners. Write natural, flowing prose with target vocabulary in **bold**. Never use section headers or markdown titles.',
+        },
+        { role: 'user', content: sectionPrompt },
+      ],
+      { maxTokens: 1200, temperature: 0.82 }
+    );
+
+    // Clean any accidental headers or fences
+    const cleanedSection = sectionContent
+      .replace(/^```[a-z]*\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/^(Part \d+|Chapter \d+|Section \d+)[:\s-]*/gim, '')
+      .trim();
+
+    storySections.push(cleanedSection);
+  }
+
+  // Stage 3: Verification of used words (80% - 92%)
+  onProgress(82, 'Checking vocabulary coverage...');
+  let combinedStory = storySections.join('\n\n').trim();
+
+  // Find any missing words
+  const missingWords = cleanWords.filter((w) => {
+    const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
+    return !reg.test(combinedStory);
+  });
+
+  if (missingWords.length > 0 && missingWords.length <= 15) {
+    onProgress(88, `Weaving in remaining words...`);
+    const missingList = missingWords.map((w) => `- ${w.word}: ${w.meaning}`).join('\n');
+    const revisionPrompt = `Here is the current ending of our story:
+"${combinedStory.slice(-400)}"
+
+Task: Write a short, natural concluding epilogue (1-2 paragraphs) to weave in these remaining vocabulary words:
+${missingList}
+
+Rules:
+1. Enclose each vocabulary word in double asterisks like **word**.
+2. Make it flow naturally as the final sentences of the story. No headers.`;
+
+    try {
+      const epilogue = await callGroqWithRetry(
+        apiKey,
+        [
+          { role: 'system', content: 'You are a creative writer. Write short, punchy paragraphs.' },
+          { role: 'user', content: revisionPrompt },
+        ],
+        { maxTokens: 500, temperature: 0.8 }
+      );
+      const cleanEpilogue = epilogue
+        .replace(/^```[a-z]*\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      combinedStory += '\n\n' + cleanEpilogue;
+    } catch {
+      // Non-fatal, continue with what we have
+    }
+  }
+
+  // Stage 4: Ensure all target words that appear in the text are properly bolded
+  onProgress(94, 'Finalizing your story...');
+
+  // Ensure any saved word that is present in the text has **word** formatting if AI omitted asterisks
+  for (const w of cleanWords) {
+    const regex = new RegExp(`(?<!\\*\\*)\\b(${escapeRegex(w.word)})\\b(?!\\*\\*)`, 'gi');
+    combinedStory = combinedStory.replace(regex, '**$1**');
+  }
+
+  // Calculate words successfully used
+  const wordsUsedList = cleanWords.filter((w) => {
+    const reg = new RegExp(`\\b${escapeRegex(w.word)}\\b`, 'i');
+    return reg.test(combinedStory);
+  });
+
+  onProgress(100, 'Story ready!');
+
+  return {
+    title: storyTitle,
+    story: combinedStory,
+    wordsUsed: wordsUsedList,
+    wordsUsedCount: wordsUsedList.length,
+    totalWords: cleanWords.length,
+  };
+}
+
+// ─── Cooldown Status Endpoint ───
+app.get('/api/story/cooldown', (req, res) => {
+  const remaining = getRemainingCooldown(req);
+  res.json({ cooldownSeconds: remaining });
+});
+
+// ─── AI Story Generator (SSE Streaming Endpoint) ───
+app.post('/api/story/generate-stream', async (req, res) => {
+  try {
+    const remainingCooldown = getRemainingCooldown(req);
+    if (remainingCooldown > 0) {
+      return res.status(429).json({
+        error: `Please wait ${remainingCooldown}s before generating another story.`,
+        cooldownSeconds: remainingCooldown,
+      });
+    }
+
+    const { words } = req.body;
     if (!words || !Array.isArray(words) || words.length === 0) {
       return res.status(400).json({ error: 'Please provide an array of vocabulary words.' });
     }
@@ -564,110 +884,81 @@ app.post('/api/story/generate', async (req, res) => {
       return res.status(503).json({ error: 'Groq API key is not configured on the server.' });
     }
 
-    // Build word list for prompt
-    const wordList = words
-      .map((w, i) => `${i + 1}. **${w.word}** — ${w.meaning}`)
-      .join('\n');
+    // Set up Server-Sent Events headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
 
-    const wordCount = words.length;
-    const targetLength = Math.max(120, wordCount * 30);
-
-    const prompt = `You are a creative and funny English vocabulary story writer.
-
-Your job: Write a short, fun, engaging story using the vocabulary words listed below. The story must be easy to understand for English learners.
-
-Vocabulary Words (${wordCount} total):
-${wordList}
-
-Rules:
-1. Use every single vocabulary word naturally in the story — do not skip any.
-2. Write the story word in bold wherever it appears, like **word**. Bold only the exact vocabulary word as it appears, not surrounding text.
-3. The story should be approximately ${targetLength} words long — scale with the number of words.
-4. Make the story fun, slightly humorous, and easy to follow. Use emojis sparingly for style (1–3 max).
-5. Give the story a short, catchy title (5 words or fewer) — do NOT include "**" in the title.
-6. The story must flow naturally — do not just list sentences for each word separately.
-7. All vocabulary words must appear in their listed form (or grammatically inflected form such as plural/past tense). Bold the inflected form if used.
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "title": "Short Catchy Title",
-  "story": "Full story text here with **bolded** vocabulary words.",
-  "wordsUsed": [
-    { "word": "word1", "meaning": "meaning1" },
-    { "word": "word2", "meaning": "meaning2" }
-  ]
-}
-
-Do NOT include any explanation outside the JSON.`;
-
-    for (const model of CANDIDATE_MODELS) {
-      try {
-        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You are a creative vocabulary story generator. Always respond with valid JSON only. No extra text.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            temperature: 0.85,
-            max_tokens: 1500,
-          }),
-        });
-
-        if (!groqResponse.ok) {
-          if (groqResponse.status === 429) {
-            return res.status(429).json({ error: 'AI rate limit reached. Please wait and try again.' });
-          }
-          continue;
-        }
-
-        const groqData = await groqResponse.json();
-        const rawText = groqData?.choices?.[0]?.message?.content?.trim() || '';
-
-        // Parse JSON response
-        let parsed;
-        try {
-          // Strip markdown code fences if present
-          const jsonStr = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-          parsed = JSON.parse(jsonStr);
-        } catch {
-          // Attempt to extract JSON object
-          const match = rawText.match(/\{[\s\S]*\}/);
-          if (match) {
-            try {
-              parsed = JSON.parse(match[0]);
-            } catch {
-              continue;
-            }
-          } else {
-            continue;
-          }
-        }
-
-        if (parsed && typeof parsed.title === 'string' && typeof parsed.story === 'string') {
-          return res.json({
-            title: parsed.title,
-            story: parsed.story,
-            wordsUsed: Array.isArray(parsed.wordsUsed) ? parsed.wordsUsed : words,
-          });
-        }
-      } catch {
-        continue;
+    const sendEvent = (eventData) => {
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify(eventData)}\n\n`);
       }
+    };
+
+    try {
+      const result = await executeMultiStageStoryGeneration(
+        apiKey,
+        words,
+        (percent, status) => {
+          sendEvent({ type: 'progress', percent, status });
+        }
+      );
+
+      // Record successful cooldown
+      recordSuccessfulStory(req);
+
+      sendEvent({
+        type: 'complete',
+        title: result.title,
+        story: result.story,
+        wordsUsed: result.wordsUsed,
+        wordsUsedCount: result.wordsUsedCount,
+        totalWords: result.totalWords,
+      });
+      res.end();
+    } catch (genErr) {
+      sendEvent({
+        type: 'error',
+        message: genErr.message || 'Story generation failed. Please try again.',
+      });
+      res.end();
+    }
+  } catch (err) {
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Failed to initialize story stream.' });
+    }
+    res.end();
+  }
+});
+
+// ─── AI Story Generator (Standard Fallback Endpoint) ───
+app.post('/api/story/generate', async (req, res) => {
+  try {
+    const remainingCooldown = getRemainingCooldown(req);
+    if (remainingCooldown > 0) {
+      return res.status(429).json({
+        error: `Please wait ${remainingCooldown}s before generating another story.`,
+        cooldownSeconds: remainingCooldown,
+      });
     }
 
-    return res.status(502).json({ error: 'Could not generate story at this time. Please try again.' });
+    const { words } = req.body;
+    if (!words || !Array.isArray(words) || words.length === 0) {
+      return res.status(400).json({ error: 'Please provide an array of vocabulary words.' });
+    }
+
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey || apiKey === 'your_groq_api_key_here') {
+      return res.status(503).json({ error: 'Groq API key is not configured on the server.' });
+    }
+
+    const result = await executeMultiStageStoryGeneration(apiKey, words, () => {});
+    recordSuccessfulStory(req);
+    return res.json(result);
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to process story generation request.' });
+    return res.status(500).json({ error: err.message || 'Failed to process story generation request.' });
   }
 });
 
