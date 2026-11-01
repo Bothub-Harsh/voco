@@ -26,14 +26,14 @@
 
         </activity>
 
-        <!-- Native Interactive Quiz Popup Activity (Floating over any foreground app) -->
+        <!-- Native Interactive Flashcard & Quiz Popup Activity (Floating over any foreground app) -->
         <activity
             android:name=".VocoQuizDialogActivity"
             android:theme="@style/Theme.Voco.QuizDialog"
-            android:taskAffinity=""
-            android:launchMode="singleInstance"
+            android:taskAffinity="${applicationId}.quiz"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
-            android:noHistory="true"
+            android:noHistory="false"
             android:autoRemoveFromRecents="true"
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -55,6 +55,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.harsh.voco.PRACTICE_REMINDER" />
+                <action android:name="com.harsh.voco.NOTIFICATION_DISMISSED" />
             </intent-filter>
         </receiver>
 

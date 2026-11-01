@@ -33,6 +33,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     public static final String EXTRA_HINDI_MEANING = "com.harsh.voco.EXTRA_HINDI_MEANING";
     public static final String EXTRA_HINDI_EXAMPLE = "com.harsh.voco.EXTRA_HINDI_EXAMPLE";
     public static final String EXTRA_NOTIFICATION_ID = "com.harsh.voco.EXTRA_NOTIFICATION_ID";
+    public static final String EXTRA_IS_TEST = "com.harsh.voco.EXTRA_IS_TEST";
 
     public static final String PREFS_QUIZ_STATS = "voco_quiz_stats";
     public static final String KEY_TOTAL_ANSWERED = "total_answered";
@@ -49,9 +50,27 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private String hindiExample = "";
     private List<String> options = new ArrayList<>();
     private int correctIndex = 0;
-    private boolean hasAnswered = false;
+    private boolean isTest = false;
     private int notificationId = -1;
 
+    private boolean isFlashcardMode = true;
+    private boolean hasAnswered = false;
+
+    // Views
+    private TextView textHeaderTag;
+    private TextView textWord;
+
+    // Flashcard views
+    private LinearLayout layoutFlashcardPrompt;
+    private LinearLayout layoutFlashcardButtons;
+    private Button btnRemember;
+    private Button btnDontRemember;
+    private LinearLayout layoutRememberConfirmed;
+    private TextView textRememberedMeaning;
+    private Button btnRememberClose;
+
+    // Quiz views
+    private LinearLayout layoutQuizSection;
     private LinearLayout[] optionLayouts = new LinearLayout[4];
     private TextView[] optionBadges = new TextView[4];
     private TextView[] optionTexts = new TextView[4];
@@ -62,24 +81,26 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private TextView textResultMeaning;
     private LinearLayout layoutExample;
     private TextView textExample;
+    private Button btnClose;
+    private Button btnOpenApp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_voco_quiz_dialog);
 
-        // Configure window to match parent so scrim covers screen and dims underlying app (WhatsApp, etc.)
+        // Configure window to match parent so transparent scrim dims background app
         getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
         getWindow().setBackgroundDrawableResource(android.R.color.transparent);
 
-        // Cancel ONLY the specific notification the user tapped; leave all others intact
+        // Cancel ONLY the specific notification the user tapped; leave others intact
         notificationId = getIntent().getIntExtra(EXTRA_NOTIFICATION_ID, -1);
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null && notificationId != -1) {
             nm.cancel(notificationId);
         }
 
-        // Handle Android system back gesture/button cleanly
+        // Handle Android system back gesture cleanly
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -90,6 +111,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         readIntentData(getIntent());
         // Remove currently active notification from persistent pending queue
         VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+
         initViews();
         applyResponsiveCardWidth();
     }
@@ -100,6 +122,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         setIntent(intent);
         readIntentData(intent);
         VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+        isFlashcardMode = true;
         hasAnswered = false;
         initViews();
         applyResponsiveCardWidth();
@@ -114,6 +137,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             hindiMeaning = intent.getStringExtra(EXTRA_HINDI_MEANING);
             hindiExample = intent.getStringExtra(EXTRA_HINDI_EXAMPLE);
             notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
+            isTest = intent.getBooleanExtra(EXTRA_IS_TEST, false);
+
             ArrayList<String> extraOpts = intent.getStringArrayListExtra(EXTRA_OPTIONS);
             if (extraOpts != null && extraOpts.size() >= 4) {
                 options = extraOpts;
@@ -152,13 +177,12 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     }
 
     private void initViews() {
-        // Outside scrim touch listener: dismiss dialog and return user to current app
+        // Outside scrim touch listener: dismiss dialog
         View rootScrim = findViewById(R.id.quiz_root_scrim);
         if (rootScrim != null) {
             rootScrim.setOnClickListener(v -> dismissQuiz());
         }
 
-        // Prevent touches on the quiz card itself from dismissing the dialog
         View cardContainer = findViewById(R.id.quiz_card_container);
         if (cardContainer != null) {
             cardContainer.setOnClickListener(v -> {
@@ -166,12 +190,24 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             });
         }
 
-        TextView textWord = findViewById(R.id.text_word);
+        textHeaderTag = findViewById(R.id.text_header_tag);
+        textWord = findViewById(R.id.text_word);
         textWord.setText(wordText.toUpperCase());
 
         ImageView btnDismissX = findViewById(R.id.btn_dismiss_x);
         btnDismissX.setOnClickListener(v -> dismissQuiz());
 
+        // Flashcard components
+        layoutFlashcardPrompt = findViewById(R.id.layout_flashcard_prompt);
+        layoutFlashcardButtons = findViewById(R.id.layout_flashcard_buttons);
+        btnRemember = findViewById(R.id.btn_remember);
+        btnDontRemember = findViewById(R.id.btn_dont_remember);
+        layoutRememberConfirmed = findViewById(R.id.layout_remember_confirmed);
+        textRememberedMeaning = findViewById(R.id.text_remembered_meaning);
+        btnRememberClose = findViewById(R.id.btn_remember_close);
+
+        // Quiz components
+        layoutQuizSection = findViewById(R.id.layout_quiz_section);
         optionLayouts[0] = findViewById(R.id.layout_option_a);
         optionLayouts[1] = findViewById(R.id.layout_option_b);
         optionLayouts[2] = findViewById(R.id.layout_option_c);
@@ -194,11 +230,25 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         layoutExample = findViewById(R.id.layout_example);
         textExample = findViewById(R.id.text_example);
 
-        Button btnClose = findViewById(R.id.btn_close);
-        Button btnOpenApp = findViewById(R.id.btn_open_app);
+        btnClose = findViewById(R.id.btn_close);
+        btnOpenApp = findViewById(R.id.btn_open_app);
 
-        // Reset state for new intent or initial load
+        // Initial state: Flashcard prompt visible, quiz section hidden
+        isFlashcardMode = true;
+        hasAnswered = false;
+
+        textHeaderTag.setText("VOCO FLASHCARD 📖");
+        layoutFlashcardPrompt.setVisibility(View.VISIBLE);
+        layoutFlashcardButtons.setVisibility(View.VISIBLE);
+        layoutRememberConfirmed.setVisibility(View.GONE);
+        layoutQuizSection.setVisibility(View.GONE);
         layoutFeedback.setVisibility(View.GONE);
+
+        // FLASHCARD BUTTONS
+        btnRemember.setOnClickListener(v -> handleRememberClicked());
+        btnDontRemember.setOnClickListener(v -> handleDontRememberClicked());
+
+        // Prepare quiz options (ready if user taps 'Don't Remember')
         for (int i = 0; i < 4; i++) {
             optionTexts[i].setText(formatMarkdown(options.get(i)));
             optionLayouts[i].setBackgroundResource(R.drawable.bg_quiz_option_default);
@@ -212,51 +262,58 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             optionLayouts[i].setOnClickListener(v -> handleOptionSelected(index));
         }
 
-        // LEFT BUTTON: Open Voco - explicitly launches main Voco React activity only when tapped
         btnOpenApp.setOnClickListener(v -> openMainVocoApp());
-
-        // RIGHT BUTTON: Close - immediately finishes popup task and returns user to previous app
         btnClose.setOnClickListener(v -> dismissQuiz());
     }
 
     /**
-     * Converts markdown bold (**phrase** or __phrase__) and unescaped asterisks
-     * into native Android Spanned bold text, preventing raw asterisks from displaying.
+     * Remember flow:
+     * User remembers the word. Record progress, remove from pending queue,
+     * and check remaining queue. If more words pending, show Next button;
+     * otherwise show Close button.
      */
-    public static CharSequence formatMarkdown(String raw) {
-        if (raw == null || raw.trim().isEmpty()) {
-            return "";
-        }
-        // 1. Unescape backslashes before markdown symbols
-        String cleaned = raw.replaceAll("\\\\([*_])", "$1");
+    private void handleRememberClicked() {
+        recordQuizStats(wordText, true);
+        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
 
-        // 2. Convert markdown bold ***text***, **text**, __text__ into HTML <b>text</b>
-        String html = cleaned.replaceAll("(?i)(\\*{2,3}|_{2,3})\\s*([^\\*_]+?)\\s*(\\*{2,3}|_{2,3})", "<b>$2</b>");
+        layoutFlashcardButtons.setVisibility(View.GONE);
+        layoutRememberConfirmed.setVisibility(View.VISIBLE);
+        textRememberedMeaning.setText(formatMarkdown(correctMeaning));
 
-        // 3. Remove any remaining stray syntax symbols
-        html = html.replaceAll("(\\*{2,}|_{2,})", "");
+        int remaining = VocoAlarmScheduler.getPendingNotificationCount(this);
 
-        // 4. Convert newlines to HTML line breaks
-        html = html.replace("\n", "<br/>");
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            return Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY);
+        if (!isTest && remaining > 0) {
+            btnRememberClose.setText("Next Word (" + remaining + ")");
+            btnRememberClose.setOnClickListener(v -> handleNextPendingWord());
         } else {
-            return Html.fromHtml(html);
+            btnRememberClose.setText("Close");
+            btnRememberClose.setOnClickListener(v -> dismissQuiz());
         }
+    }
+
+    /**
+     * Don't Remember flow:
+     * Transition from Flashcard view to Multiple-Choice Quiz view.
+     */
+    private void handleDontRememberClicked() {
+        isFlashcardMode = false;
+        textHeaderTag.setText("VOCO PRACTICE ❓");
+        layoutFlashcardPrompt.setVisibility(View.GONE);
+        layoutQuizSection.setVisibility(View.VISIBLE);
     }
 
     private void handleOptionSelected(int chosenIndex) {
         if (hasAnswered) return;
         hasAnswered = true;
 
-        // Disable all option clicks
         for (LinearLayout layout : optionLayouts) {
             layout.setClickable(false);
             layout.setFocusable(false);
         }
 
         boolean isCorrect = (chosenIndex == correctIndex);
+        recordQuizStats(wordText, isCorrect);
+        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
 
         if (isCorrect) {
             optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_correct);
@@ -269,12 +326,10 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             textResultMeaning.setTextColor(Color.parseColor("#047857"));
             textResultMeaning.setText(formatMarkdown(correctMeaning));
         } else {
-            // Selected wrong option
             optionLayouts[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_option_incorrect);
             optionBadges[chosenIndex].setBackgroundResource(R.drawable.bg_quiz_badge_incorrect);
             optionBadges[chosenIndex].setTextColor(Color.WHITE);
 
-            // Highlight true correct option
             optionLayouts[correctIndex].setBackgroundResource(R.drawable.bg_quiz_option_correct);
             optionBadges[correctIndex].setBackgroundResource(R.drawable.bg_quiz_badge_correct);
             optionBadges[correctIndex].setTextColor(Color.WHITE);
@@ -284,7 +339,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             textResultTitle.setTextColor(Color.parseColor("#9F1239"));
             textResultMeaning.setTextColor(Color.parseColor("#1E293B"));
 
-            // Build rich feedback text: correct meaning + Hindi meaning if available
             StringBuilder sb = new StringBuilder(correctMeaning);
             if (hindiMeaning != null && !hindiMeaning.trim().isEmpty()) {
                 sb.append("\n\n🇮🇳 ").append(hindiMeaning.trim());
@@ -292,7 +346,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             textResultMeaning.setText(formatMarkdown(sb.toString()));
         }
 
-        // Show example sentence if present
         if (exampleSentence != null && !exampleSentence.trim().isEmpty()) {
             textExample.setText(formatMarkdown("\"" + exampleSentence.trim() + "\""));
             layoutExample.setVisibility(View.VISIBLE);
@@ -302,27 +355,21 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         layoutFeedback.setVisibility(View.VISIBLE);
 
-        // Check if there are other pending reminder notifications in the queue
-        int pendingRemaining = VocoAlarmScheduler.getPendingNotificationCount(this);
-        Button btnClose = findViewById(R.id.btn_close);
-        if (btnClose != null) {
-            if (pendingRemaining > 0) {
-                btnClose.setText("Next");
-                btnClose.setOnClickListener(v -> handleNextPendingQuiz());
-            } else {
-                btnClose.setText("Close");
-                btnClose.setOnClickListener(v -> dismissQuiz());
-            }
+        // Check true remaining pending count
+        int remaining = VocoAlarmScheduler.getPendingNotificationCount(this);
+        if (!isTest && remaining > 0) {
+            btnClose.setText("Next Word (" + remaining + ")");
+            btnClose.setOnClickListener(v -> handleNextPendingWord());
+        } else {
+            btnClose.setText("Close");
+            btnClose.setOnClickListener(v -> dismissQuiz());
         }
-
-        // Record statistics locally in SharedPreferences for synchronization
-        recordQuizStats(wordText, isCorrect);
     }
 
     /**
-     * Advances to the next pending practice reminder from the persistent queue.
+     * Loads the next pending word from queue and restarts with a fresh flashcard!
      */
-    private void handleNextPendingQuiz() {
+    private void handleNextPendingWord() {
         org.json.JSONObject nextItem = VocoAlarmScheduler.popNextPendingNotification(this);
         if (nextItem == null) {
             dismissQuiz();
@@ -345,6 +392,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         hindiExample = nextItem.optString("hindiExample", "");
         correctIndex = nextItem.optInt("correctIndex", 0);
         notificationId = nextNotifId;
+        isTest = nextItem.optBoolean("isTest", false);
 
         options = new ArrayList<>();
         org.json.JSONArray opts = nextItem.optJSONArray("options");
@@ -357,14 +405,30 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
             correctIndex = 0;
         }
 
+        isFlashcardMode = true;
         hasAnswered = false;
         initViews();
     }
 
     /**
-     * Finishes and removes this isolated dialog task, instantly restoring
-     * whichever app the user was previously using (WhatsApp, YouTube, Chrome, etc.).
+     * Formats markdown bold (**word** or __word__) to native HTML bold tags.
      */
+    public static CharSequence formatMarkdown(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return "";
+        }
+        String cleaned = raw.replaceAll("\\\\([*_])", "$1");
+        String html = cleaned.replaceAll("(?i)(\\*{2,3}|_{2,3})\\s*([^\\*_]+?)\\s*(\\*{2,3}|_{2,3})", "<b>$2</b>");
+        html = html.replaceAll("(\\*{2,}|_{2,})", "");
+        html = html.replace("\n", "<br/>");
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            return Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY);
+        } else {
+            return Html.fromHtml(html);
+        }
+    }
+
     private void dismissQuiz() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             finishAndRemoveTask();
@@ -373,9 +437,6 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Explicitly launches the main Voco application only when the user taps "Open Voco".
-     */
     private void openMainVocoApp() {
         Intent mainIntent = new Intent(this, MainActivity.class);
         mainIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);

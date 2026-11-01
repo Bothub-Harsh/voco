@@ -156,7 +156,8 @@ public class VocoNotificationPlugin extends Plugin {
         }
 
         Context ctx = getContext();
-        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, optionsList, correctIndex);
+        // Standalone Test notification: passes isTest=true
+        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, null, null, optionsList, correctIndex, true);
 
         JSObject ret = new JSObject();
         ret.put("success", true);

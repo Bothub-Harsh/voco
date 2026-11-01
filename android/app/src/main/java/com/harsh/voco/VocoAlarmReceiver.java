@@ -32,8 +32,18 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
         "Involving systematic logical reasoning based on empirical observation and facts."
     };
 
+    public static final String ACTION_NOTIFICATION_DISMISSED = "com.harsh.voco.NOTIFICATION_DISMISSED";
+
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (intent != null && ACTION_NOTIFICATION_DISMISSED.equals(intent.getAction())) {
+            int dismissedNotifId = intent.getIntExtra(VocoQuizDialogActivity.EXTRA_NOTIFICATION_ID, -1);
+            String dismissedWordId = intent.getStringExtra(VocoQuizDialogActivity.EXTRA_WORD_ID);
+            Log.d(TAG, "Notification dismissed by user swipe: notifId=" + dismissedNotifId + ", wordId=" + dismissedWordId);
+            VocoAlarmScheduler.removePendingNotification(context, dismissedNotifId, dismissedWordId);
+            return;
+        }
+
         long incomingGen = (intent != null) ? intent.getLongExtra(VocoAlarmScheduler.EXTRA_GENERATION, -1L) : -1L;
         Log.d(TAG, "VocoAlarmReceiver triggered with incoming generation: " + incomingGen);
 

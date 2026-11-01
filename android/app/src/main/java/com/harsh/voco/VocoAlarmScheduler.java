@@ -225,7 +225,8 @@ public class VocoAlarmScheduler {
         String hindiMeaning,
         String hindiExample,
         List<String> options,
-        int correctIndex
+        int correctIndex,
+        boolean isTest
     ) {
         createNotificationChannel(context);
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -236,7 +237,7 @@ public class VocoAlarmScheduler {
 
         // PendingIntent targeting the fast native VocoQuizDialogActivity popup!
         Intent quizIntent = new Intent(context, VocoQuizDialogActivity.class);
-        quizIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        quizIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (wordId != null && !wordId.isEmpty()) {
             quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_WORD_ID, wordId);
         }
@@ -253,8 +254,8 @@ public class VocoAlarmScheduler {
             quizIntent.putStringArrayListExtra(VocoQuizDialogActivity.EXTRA_OPTIONS, new ArrayList<>(options));
         }
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_CORRECT_INDEX, correctIndex);
-        // Pass unique notification ID so the activity can cancel only this notification on tap
         quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_NOTIFICATION_ID, notifId);
+        quizIntent.putExtra(VocoQuizDialogActivity.EXTRA_IS_TEST, isTest);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -262,6 +263,14 @@ public class VocoAlarmScheduler {
         }
         // Use notifId as PendingIntent request code to guarantee each notification has a distinct PendingIntent
         PendingIntent pi = PendingIntent.getActivity(context, notifId, quizIntent, flags);
+
+        // Attach Delete PendingIntent so when the user swipes away the notification from drawer,
+        // it is immediately removed from the pending reminder queue
+        Intent deleteIntent = new Intent(context, VocoAlarmReceiver.class);
+        deleteIntent.setAction(VocoAlarmReceiver.ACTION_NOTIFICATION_DISMISSED);
+        deleteIntent.putExtra(VocoQuizDialogActivity.EXTRA_NOTIFICATION_ID, notifId);
+        deleteIntent.putExtra(VocoQuizDialogActivity.EXTRA_WORD_ID, wordId != null ? wordId : "");
+        PendingIntent deletePi = PendingIntent.getBroadcast(context, notifId, deleteIntent, flags);
 
         String upperWord = (wordText != null && !wordText.isEmpty()) ? wordText.toUpperCase() : "VOCABULARY";
 
@@ -275,13 +284,28 @@ public class VocoAlarmScheduler {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setColor(Color.parseColor("#4F46E5"))
-            .setContentIntent(pi);
+            .setContentIntent(pi)
+            .setDeleteIntent(deletePi);
 
         nm.notify(notifId, builder.build());
-        Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (notifId=" + notifId + ", targets native quiz popup)");
+        Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (notifId=" + notifId + ", isTest=" + isTest + ")");
 
         // Enqueue into persistent pending notifications queue
-        enqueuePendingNotification(context, notifId, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex);
+        enqueuePendingNotification(context, notifId, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex, isTest);
+    }
+
+    public static void showNotification(
+        Context context,
+        String wordId,
+        String wordText,
+        String meaning,
+        String example,
+        String hindiMeaning,
+        String hindiExample,
+        List<String> options,
+        int correctIndex
+    ) {
+        showNotification(context, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex, false);
     }
 
     public static void enqueuePendingNotification(
@@ -294,7 +318,8 @@ public class VocoAlarmScheduler {
         String hindiMeaning,
         String hindiExample,
         List<String> options,
-        int correctIndex
+        int correctIndex,
+        boolean isTest
     ) {
         try {
             SharedPreferences prefs = getPrefs(context);
@@ -321,13 +346,29 @@ public class VocoAlarmScheduler {
             }
             item.put("options", opts);
             item.put("correctIndex", correctIndex);
+            item.put("isTest", isTest);
             item.put("timestamp", System.currentTimeMillis());
             updated.put(item);
             prefs.edit().putString(KEY_PENDING_QUEUE, updated.toString()).apply();
-            Log.d(TAG, "Enqueued pending notification: " + wordText + " (Total pending: " + updated.length() + ")");
+            Log.d(TAG, "Enqueued pending notification: " + wordText + " (Total pending: " + updated.length() + ", isTest=" + isTest + ")");
         } catch (Exception e) {
             Log.e(TAG, "Error enqueuing pending notification", e);
         }
+    }
+
+    public static void enqueuePendingNotification(
+        Context context,
+        int notifId,
+        String wordId,
+        String wordText,
+        String meaning,
+        String example,
+        String hindiMeaning,
+        String hindiExample,
+        List<String> options,
+        int correctIndex
+    ) {
+        enqueuePendingNotification(context, notifId, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex, false);
     }
 
     public static void removePendingNotification(Context context, int notifId, String wordId) {
@@ -355,21 +396,72 @@ public class VocoAlarmScheduler {
         }
     }
 
+    /**
+     * Sanitizes and returns the true active pending notification count.
+     * Prunes notifications older than 24h, and on API 23+ checks against active status bar notifications.
+     */
     public static int getPendingNotificationCount(Context context) {
+        return sanitizePendingQueue(context).length();
+    }
+
+    public static org.json.JSONArray sanitizePendingQueue(Context context) {
         try {
             SharedPreferences prefs = getPrefs(context);
             String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
-            return new org.json.JSONArray(raw).length();
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            if (arr.length() == 0) return arr;
+
+            long now = System.currentTimeMillis();
+            long maxAgeMs = 24 * 60 * 60 * 1000L; // 24 hours
+
+            // Get active notification IDs from status bar on Android 6+
+            java.util.Set<Integer> activeNotifIds = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null) {
+                    try {
+                        android.service.notification.StatusBarNotification[] active = nm.getActiveNotifications();
+                        if (active != null) {
+                            activeNotifIds = new java.util.HashSet<>();
+                            for (android.service.notification.StatusBarNotification sbn : active) {
+                                activeNotifIds.add(sbn.getId());
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            org.json.JSONArray sanitized = new org.json.JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject item = arr.getJSONObject(i);
+                long timestamp = item.optLong("timestamp", 0);
+                if (now - timestamp > maxAgeMs) {
+                    continue; // drop expired
+                }
+
+                int notifId = item.optInt("notifId", -1);
+                if (activeNotifIds != null && notifId != -1) {
+                    if (!activeNotifIds.contains(notifId)) {
+                        continue; // notification is no longer in notification drawer
+                    }
+                }
+
+                sanitized.put(item);
+            }
+
+            if (sanitized.length() != arr.length()) {
+                prefs.edit().putString(KEY_PENDING_QUEUE, sanitized.toString()).apply();
+            }
+            return sanitized;
         } catch (Exception e) {
-            return 0;
+            return new org.json.JSONArray();
         }
     }
 
     public static org.json.JSONObject popNextPendingNotification(Context context) {
         try {
             SharedPreferences prefs = getPrefs(context);
-            String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
-            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            org.json.JSONArray arr = sanitizePendingQueue(context);
             if (arr.length() == 0) return null;
             org.json.JSONObject first = arr.getJSONObject(0);
             org.json.JSONArray remaining = new org.json.JSONArray();
