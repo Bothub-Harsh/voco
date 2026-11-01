@@ -16,8 +16,9 @@ import {
   generateVocabularyFromAI,
   refreshVocabularyFromAI,
   checkBackendStatus,
+  isNetworkOrOfflineError,
 } from './services/api';
-import { generateFreshQuizSession } from './services/quizGenerator';
+import { generateFreshQuizSession, shuffleArray } from './services/quizGenerator';
 import {
   isRemindersActive,
   setRemindersActive as persistRemindersActive,
@@ -40,6 +41,10 @@ import {
   checkExactAlarmPermission,
   openExactAlarmSettings,
   ensureNotificationChannel,
+  getPendingNotificationQueue,
+  dequeuePendingNotification,
+  removePendingNotificationByWordId,
+  type PendingNotificationItem,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { AddWordForm } from './components/AddWordForm';
@@ -82,6 +87,23 @@ export function App() {
     state: 'idle',
     message: 'Local database ready',
   });
+
+  // ─── Practice All Words State ───
+  const [practiceAllSession, setPracticeAllSession] = useState<{
+    words: VocabularyWord[];
+    currentIndex: number;
+    answers: { wordId: string; correct: boolean }[];
+    isCompleted: boolean;
+  } | null>(null);
+
+  // ─── Smart Notification Queue State ───
+  const [pendingNotificationQueue, setPendingNotificationQueue] = useState<PendingNotificationItem[]>(() =>
+    getPendingNotificationQueue()
+  );
+
+  const refreshPendingQueue = useCallback(() => {
+    setPendingNotificationQueue(getPendingNotificationQueue());
+  }, []);
 
   // ─── Reminder & Notification State ───
   const [remindersActive, setRemindersActiveState] = useState<boolean>(isRemindersActive());
@@ -127,18 +149,102 @@ export function App() {
     }
   }, [activeQuizSession]);
 
+  // ─── Practice All Words Handlers ───
+  const handleStartPracticeAll = useCallback(() => {
+    if (wordsRef.current.length === 0) {
+      alert('Save at least one word first before practicing all words.');
+      return;
+    }
+    const shuffled = shuffleArray(wordsRef.current);
+    setPracticeAllSession({
+      words: shuffled,
+      currentIndex: 0,
+      answers: [],
+      isCompleted: false,
+    });
+    const firstQuiz = generateFreshQuizSession(shuffled[0], wordsRef.current);
+    setActiveQuizSession(firstQuiz);
+  }, []);
+
+  const handleAnswerSubmittedInPracticeAll = useCallback((isCorrect: boolean) => {
+    setPracticeAllSession((prev) => {
+      if (!prev) return null;
+      const currentWord = prev.words[prev.currentIndex];
+      const filtered = prev.answers.filter((a) => a.wordId !== currentWord.id);
+      return {
+        ...prev,
+        answers: [...filtered, { wordId: currentWord.id, correct: isCorrect }],
+      };
+    });
+  }, []);
+
+  const handleNextWordInPracticeAll = useCallback(() => {
+    setPracticeAllSession((prev) => {
+      if (!prev) return null;
+      const nextIndex = prev.currentIndex + 1;
+      if (nextIndex < prev.words.length) {
+        const nextWord = prev.words[nextIndex];
+        const freshSession = generateFreshQuizSession(nextWord, wordsRef.current);
+        setActiveQuizSession(freshSession);
+        return {
+          ...prev,
+          currentIndex: nextIndex,
+        };
+      } else {
+        return {
+          ...prev,
+          isCompleted: true,
+        };
+      }
+    });
+  }, []);
+
+  const handlePracticeAgainAll = useCallback(() => {
+    if (wordsRef.current.length === 0) return;
+    const shuffled = shuffleArray(wordsRef.current);
+    setPracticeAllSession({
+      words: shuffled,
+      currentIndex: 0,
+      answers: [],
+      isCompleted: false,
+    });
+    const firstQuiz = generateFreshQuizSession(shuffled[0], wordsRef.current);
+    setActiveQuizSession(firstQuiz);
+  }, []);
+
+  const handleCloseQuiz = useCallback(() => {
+    setActiveQuizSession(null);
+    setPracticeAllSession(null);
+  }, []);
+
+  // ─── Smart Notification Queue Handlers ───
+  const handleNextPendingNotification = useCallback(async () => {
+    const nextItem = dequeuePendingNotification();
+    refreshPendingQueue();
+    if (nextItem) {
+      const found = await getWordById(nextItem.wordId);
+      if (found) {
+        openQuizForWord(found);
+        return;
+      }
+    }
+    setActiveQuizSession(null);
+  }, [openQuizForWord, refreshPendingQueue]);
+
   // Check URL params for ?quiz=<id> (from notifications)
   const checkUrlForQuiz = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
     const quizId = params.get('quiz');
     if (quizId) {
+      removePendingNotificationByWordId(quizId);
+      refreshPendingQueue();
       const found = await getWordById(quizId);
       if (found) {
         openQuizForWord(found);
       }
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [openQuizForWord]);
+  }, [openQuizForWord, refreshPendingQueue]);
 
   // ─── Initialization ───
   useEffect(() => {
@@ -211,6 +317,8 @@ export function App() {
 
     // Setup native notification click listener
     setupNotificationListeners(async (wordId) => {
+      removePendingNotificationByWordId(wordId);
+      refreshPendingQueue();
       const found = await getWordById(wordId);
       if (found) {
         openQuizForWord(found);
@@ -220,6 +328,8 @@ export function App() {
     // Online/offline listeners
     const handleOnline = () => {
       setIsOnline(true);
+      setErrorMessage((prev) => (prev === 'No internet connection. Please check your network.' ? null : prev));
+      setRefreshError((prev) => (prev?.message === 'No internet connection. Please check your network.' ? null : prev));
       checkBackendStatus().then(setBackendStatus);
     };
     const handleOffline = () => setIsOnline(false);
@@ -335,6 +445,14 @@ export function App() {
     setErrorMessage(null);
     setLastFailedWord(null);
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOnline(false);
+      setErrorMessage('No internet connection. Please check your network.');
+      setLastFailedWord(inputWord);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const generated = await generateVocabularyFromAI(inputWord);
       const saved = await saveWord(generated);
@@ -353,8 +471,13 @@ export function App() {
       setHighlightedWordId(saved.id);
       triggerSuccessMessage();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to add word.';
-      setErrorMessage(msg);
+      if (isNetworkOrOfflineError(err)) {
+        setIsOnline(false);
+        setErrorMessage('No internet connection. Please check your network.');
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to add word.';
+        setErrorMessage(msg);
+      }
       setLastFailedWord(inputWord);
     } finally {
       setIsLoading(false);
@@ -412,6 +535,16 @@ export function App() {
     setRefreshingWordId(wordToRefresh.id);
     setRefreshError(null);
 
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOnline(false);
+      setRefreshError({
+        wordId: wordToRefresh.id,
+        message: 'No internet connection. Please check your network.',
+      });
+      setRefreshingWordId(null);
+      return;
+    }
+
     try {
       const refreshed = await refreshVocabularyFromAI(
         wordToRefresh.word,
@@ -432,8 +565,16 @@ export function App() {
       await updateWord(updatedWord);
       await refreshWords();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to refresh explanation.';
-      setRefreshError({ wordId: wordToRefresh.id, message: msg });
+      if (isNetworkOrOfflineError(err)) {
+        setIsOnline(false);
+        setRefreshError({
+          wordId: wordToRefresh.id,
+          message: 'No internet connection. Please check your network.',
+        });
+      } else {
+        const msg = err instanceof Error ? err.message : 'Failed to refresh explanation.';
+        setRefreshError({ wordId: wordToRefresh.id, message: msg });
+      }
     } finally {
       setRefreshingWordId(null);
     }
@@ -833,6 +974,7 @@ export function App() {
               <WordList
                 words={words}
                 onOpenQuiz={(word) => openQuizForWord(word)}
+                onPracticeAll={handleStartPracticeAll}
                 onDeleteWord={handleDeleteWord}
                 onDeleteBatch={handleDeleteBatch}
                 onUpdateWord={handleUpdateWord}
@@ -875,8 +1017,43 @@ export function App() {
       {activeQuizSession && (
         <QuizScreen
           quiz={activeQuizSession}
-          onClose={() => setActiveQuizSession(null)}
+          onClose={handleCloseQuiz}
           onTryAgain={() => handleTryAgainQuiz(activeQuizSession.wordId)}
+          practiceAll={
+            practiceAllSession
+              ? {
+                  currentIndex: practiceAllSession.currentIndex,
+                  totalWords: practiceAllSession.words.length,
+                  onNextWord: handleNextWordInPracticeAll,
+                  onAnswerSubmitted: handleAnswerSubmittedInPracticeAll,
+                  isCompleted: practiceAllSession.isCompleted,
+                  results: {
+                    correctCount: practiceAllSession.answers.filter((a) => a.correct).length,
+                    incorrectCount:
+                      practiceAllSession.answers.length -
+                      practiceAllSession.answers.filter((a) => a.correct).length,
+                    total: practiceAllSession.words.length,
+                    score:
+                      practiceAllSession.words.length > 0
+                        ? Math.round(
+                            (practiceAllSession.answers.filter((a) => a.correct).length /
+                              practiceAllSession.words.length) *
+                              100
+                          )
+                        : 0,
+                  },
+                  onPracticeAgain: handlePracticeAgainAll,
+                }
+              : undefined
+          }
+          notificationQueue={
+            !practiceAllSession && pendingNotificationQueue.length > 0
+              ? {
+                  remainingCount: pendingNotificationQueue.length,
+                  onNext: handleNextPendingNotification,
+                }
+              : undefined
+          }
         />
       )}
 

@@ -149,16 +149,16 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
           type="button"
           onClick={handleExport}
           disabled={totalWords === 0 || isExporting}
-          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-850 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs group"
+          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-slate-300 dark:border-[#3E4452] hover:border-slate-400 dark:hover:border-[#4F5568] bg-white dark:bg-[#1B1D25] hover:bg-slate-50 dark:hover:bg-[#252834] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs group"
           title={totalWords === 0 ? 'Save at least one word to export' : 'Export vocabulary to JSON'}
         >
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
             <Download className="w-4 h-4" />
           </div>
-          <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+          <span className="text-xs font-bold text-slate-800 dark:text-[#F1F1F5]">
             {isExporting ? 'Exporting…' : 'Export'}
           </span>
-          <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+          <span className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
             Save JSON
           </span>
         </button>
@@ -174,16 +174,16 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/80 hover:bg-slate-100 dark:hover:bg-zinc-850 active:scale-[0.98] transition-all shadow-xs group"
+          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-slate-300 dark:border-[#3E4452] hover:border-slate-400 dark:hover:border-[#4F5568] bg-white dark:bg-[#1B1D25] hover:bg-slate-50 dark:hover:bg-[#252834] active:scale-[0.98] transition-all shadow-xs group"
           title="Import vocabulary from a JSON backup file"
         >
           <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
             <Upload className="w-4 h-4" />
           </div>
-          <span className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+          <span className="text-xs font-bold text-slate-800 dark:text-[#F1F1F5]">
             Import
           </span>
-          <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-0.5">
+          <span className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
             Restore file
           </span>
         </button>
@@ -191,16 +191,16 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
         <button
           type="button"
           onClick={() => setShowBulkModal(true)}
-          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-indigo-200/90 dark:border-[#6554F5]/40 hover:border-[#6554F5] dark:hover:border-[#6554F5] bg-indigo-50/60 dark:bg-[#6554F5]/10 hover:bg-indigo-100/70 dark:hover:bg-[#6554F5]/20 active:scale-[0.98] transition-all shadow-xs group"
+          className="flex flex-col items-center justify-center p-3 rounded-2xl border border-indigo-300 dark:border-[#6554F5]/50 hover:border-[#6554F5] dark:hover:border-[#8875F5] bg-indigo-50/70 dark:bg-[#6554F5]/15 hover:bg-indigo-100/70 dark:hover:bg-[#6554F5]/25 active:scale-[0.98] transition-all shadow-xs group"
           title="Add multiple words by typing or pasting a list"
         >
-          <div className="w-9 h-9 rounded-xl bg-indigo-100/80 dark:bg-[#6554F5]/25 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-[#6554F5]/25 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
             <FileText className="w-4 h-4" />
           </div>
           <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
             Add Text
           </span>
-          <span className="text-[10px] text-indigo-600/80 dark:text-[#8172F8]/80 mt-0.5">
+          <span className="text-[10px] text-indigo-600 dark:text-[#8875F5] mt-0.5">
             Bulk words
           </span>
         </button>

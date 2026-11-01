@@ -24,6 +24,7 @@ import { speak, stopSpeech, isTtsAvailable } from '../services/tts';
 interface WordListProps {
   words: VocabularyWord[];
   onOpenQuiz: (word: VocabularyWord) => void;
+  onPracticeAll?: () => void;
   onDeleteWord: (id: string, word: string) => Promise<void>;
   onDeleteBatch?: (ids: string[]) => Promise<void>;
   onUpdateWord: (word: VocabularyWord) => Promise<void>;
@@ -37,6 +38,7 @@ interface WordListProps {
 export const WordList: React.FC<WordListProps> = ({
   words,
   onOpenQuiz,
+  onPracticeAll,
   onDeleteWord,
   onDeleteBatch,
   onUpdateWord,
@@ -333,7 +335,7 @@ export const WordList: React.FC<WordListProps> = ({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search words or meanings..."
-          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-[#30333E] bg-white dark:bg-[#222530] hover:bg-slate-50/50 dark:hover:bg-[#2A2E3C] focus:bg-white focus:dark:bg-[#222530] focus:outline-none focus:ring-2 focus:ring-[#8875F5]/25 focus:border-[#8875F5] dark:focus:border-[#8875F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80]"
+          className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568] focus:bg-white focus:dark:bg-[#1B1D25] focus:outline-none focus:ring-2 focus:ring-[#8875F5]/30 focus:border-[#8875F5] dark:focus:border-[#8875F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] shadow-xs"
           autoComplete="off"
           spellCheck="false"
         />
@@ -351,7 +353,7 @@ export const WordList: React.FC<WordListProps> = ({
 
       {/* No search results */}
       {filteredWords.length === 0 && searchQuery.trim() && (
-        <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-8 text-center transition-colors">
+        <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-8 text-center transition-colors">
           <Search className="w-8 h-8 text-slate-300 dark:text-zinc-500 mx-auto mb-2" />
           <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">
             No words matching &ldquo;{searchQuery}&rdquo;
@@ -362,6 +364,20 @@ export const WordList: React.FC<WordListProps> = ({
             className="mt-2 text-xs text-[#6554F5] dark:text-[#6554F5] hover:underline font-semibold"
           >
             Clear search
+          </button>
+        </div>
+      )}
+
+      {/* ━━ Practice All Words Button ━━ */}
+      {words.length > 0 && !isSelectionActive && onPracticeAll && (
+        <div className="pt-0.5">
+          <button
+            type="button"
+            onClick={onPracticeAll}
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-[#6554F5] to-[#7B68EE] hover:from-[#5443E8] hover:to-[#6A57DC] active:from-[#4736D7] active:to-[#5946CB] text-white rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm shadow-md shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center justify-center space-x-2 border border-indigo-400/30"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span>Practice All Words ({words.length})</span>
           </button>
         </div>
       )}
@@ -390,10 +406,10 @@ export const WordList: React.FC<WordListProps> = ({
                 isSelectionActive ? 'cursor-pointer' : ''
               } ${
                 isSelected
-                  ? 'border-[#8875F5] dark:border-[#8875F5] ring-2 ring-[#8875F5]/20'
+                  ? 'border-[#8875F5] dark:border-[#8875F5] ring-2 ring-[#8875F5]/30 shadow-md'
                   : isHighlighted
-                    ? 'border-indigo-400 dark:border-[#8875F5] ring-2 ring-indigo-100 dark:ring-[#8875F5]/15'
-                    : 'border-slate-200/90 dark:border-[#30333E] hover:border-slate-300 dark:hover:border-[#3C4050]'
+                    ? 'border-indigo-400 dark:border-[#8875F5] ring-2 ring-indigo-200 dark:ring-[#8875F5]/25 shadow-md'
+                    : 'border-slate-300 dark:border-[#3E4452] hover:border-slate-400 dark:hover:border-[#4F5568]'
               }`}
               style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
             >
@@ -421,7 +437,7 @@ export const WordList: React.FC<WordListProps> = ({
 
                   {/* Word Title */}
                   <h3 className="text-lg font-bold text-slate-900 dark:text-zinc-100 capitalize tracking-tight leading-tight">
-                    {item.word}
+                    {item.word.replace(/\*+/g, '')}
                   </h3>
 
                   {/* Exactly ONE speaker icon beside word title */}
@@ -500,7 +516,7 @@ export const WordList: React.FC<WordListProps> = ({
 
               {/* ━━ Bilingual Meanings & Example container (Vertical Stack) ━━ */}
               <div
-                className="mt-3 bg-slate-50/70 dark:bg-[#222530] rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-[#30333E] space-y-3"
+                className="mt-3 bg-slate-50/80 dark:bg-[#15171E] rounded-xl p-3.5 sm:p-4 border border-slate-200 dark:border-[#3E4452] space-y-3"
                 onClick={(e) => {
                   if (isSelectionActive) e.stopPropagation();
                 }}
@@ -514,8 +530,8 @@ export const WordList: React.FC<WordListProps> = ({
                     <button
                       type="button"
                       onClick={() => onRefreshWord(item)}
-                      disabled={isRefreshing}
-                      className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#8875F5] dark:text-[#8875F5] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-[#2A2E3C] hover:bg-indigo-50 dark:hover:bg-[#30333E] border border-slate-200 dark:border-[#30333E] px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isRefreshing || refreshingWordId !== null}
+                      className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#8875F5] dark:text-[#8875F5] hover:text-indigo-700 dark:hover:text-white bg-white dark:bg-[#2A2E3C] hover:bg-indigo-50 dark:hover:bg-[#3E4452] border border-slate-300 dark:border-[#3E4452] px-2 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       title="Generate fresh English & Hindi definitions"
                     >
                       <RotateCw
@@ -531,7 +547,7 @@ export const WordList: React.FC<WordListProps> = ({
 
                 {/* 2. Hindi Meaning (Vertically below English meaning) */}
                 {item.hindiMeaning ? (
-                  <div className="pt-2.5 border-t border-slate-200/80 dark:border-[#30333E]">
+                  <div className="pt-2.5 border-t border-slate-200 dark:border-[#2E3341]">
                     <span className="text-[10px] font-bold text-slate-500 dark:text-[#A5A8B5] tracking-wider uppercase block mb-1">
                       अर्थ (HINDI)
                     </span>
@@ -540,7 +556,7 @@ export const WordList: React.FC<WordListProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="pt-2 border-t border-slate-200/80 dark:border-[#30333E] flex items-center justify-between">
+                  <div className="pt-2 border-t border-slate-200 dark:border-[#2E3341] flex items-center justify-between">
                     <span className="text-[10px] font-medium text-slate-400 dark:text-[#6B6E80] italic">
                       No Hindi translation yet
                     </span>
@@ -556,12 +572,12 @@ export const WordList: React.FC<WordListProps> = ({
                 )}
 
                 {/* 3. English Example (Strictly English only, in normal italic text) */}
-                <div className="pt-2.5 border-t border-slate-200/80 dark:border-[#30333E]">
+                <div className="pt-2.5 border-t border-slate-200 dark:border-[#2E3341]">
                   <span className="text-[10px] font-bold text-slate-500 dark:text-[#A5A8B5] tracking-wider uppercase block mb-1">
                     EXAMPLE
                   </span>
                   <p className="text-sm text-slate-500 dark:text-[#A5A8B5] italic leading-relaxed">
-                    &ldquo;{item.example}&rdquo;
+                    &ldquo;<FormattedMeaning text={item.example} />&rdquo;
                   </p>
                 </div>
               </div>

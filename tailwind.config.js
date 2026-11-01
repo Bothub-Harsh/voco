@@ -21,12 +21,12 @@ export default {
           800: '#372AB0',
           900: '#2E2290',
         },
-        // Soft Charcoal Dark Mode palette:
+        // Soft Charcoal Dark Mode palette with clearly visible charcoal borders:
         // 950 = Card background (#1B1D25)
         // 900 = Secondary surface / inner containers (#222530)
-        // 850 = Dividers (#2A2E3C)
-        // 800 = Visible borders (#30333E)
-        // 700 = Hover border (#3C4050)
+        // 850 = Dividers (#2E3341)
+        // 800 = Visible borders (#3E4452)
+        // 700 = Hover border (#4F5568)
         // 500 = Muted text (#A5A8B5)
         // 400 = Secondary text (#8B8E9C)
         // 100 = Primary dark text (#F1F1F5)
@@ -38,9 +38,9 @@ export default {
           400: '#8B8E9C',
           500: '#A5A8B5',
           600: '#6B6E80',
-          700: '#3C4050',
-          800: '#30333E',
-          850: '#2A2E3C',
+          700: '#4F5568',
+          800: '#3E4452',
+          850: '#2E3341',
           900: '#222530',
           950: '#1B1D25',
         },
@@ -48,8 +48,8 @@ export default {
           bg: '#121318',
           card: '#1B1D25',
           surface: '#222530',
-          border: '#30333E',
-          divider: '#2A2E3C',
+          border: '#3E4452',
+          divider: '#2E3341',
           text: '#F1F1F5',
           muted: '#A5A8B5',
           accent: '#8875F5',

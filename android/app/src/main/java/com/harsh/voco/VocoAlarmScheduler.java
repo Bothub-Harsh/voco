@@ -34,6 +34,7 @@ public class VocoAlarmScheduler {
     public static final String KEY_LAST_WORD_ID = "last_word_id";
     public static final String KEY_ROTATION_QUEUE = "rotation_queue"; // JSON array of word IDs for cycle
     public static final String KEY_SHOWN_IN_CYCLE = "shown_in_cycle"; // JSON array of word IDs already shown
+    public static final String KEY_PENDING_QUEUE = "pending_notification_queue"; // JSON array of pending reminder quizzes
 
     // Intent actions and extras
     public static final String ACTION_PRACTICE_REMINDER = "com.harsh.voco.PRACTICE_REMINDER";
@@ -278,6 +279,109 @@ public class VocoAlarmScheduler {
 
         nm.notify(notifId, builder.build());
         Log.d(TAG, "Native practice notification delivered for word: " + upperWord + " (notifId=" + notifId + ", targets native quiz popup)");
+
+        // Enqueue into persistent pending notifications queue
+        enqueuePendingNotification(context, notifId, wordId, wordText, meaning, example, hindiMeaning, hindiExample, options, correctIndex);
+    }
+
+    public static void enqueuePendingNotification(
+        Context context,
+        int notifId,
+        String wordId,
+        String wordText,
+        String meaning,
+        String example,
+        String hindiMeaning,
+        String hindiExample,
+        List<String> options,
+        int correctIndex
+    ) {
+        try {
+            SharedPreferences prefs = getPrefs(context);
+            String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.getJSONObject(i);
+                if (!obj.optString("wordId").equals(wordId) && obj.optInt("notifId", -1) != notifId) {
+                    updated.put(obj);
+                }
+            }
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("notifId", notifId);
+            item.put("wordId", wordId != null ? wordId : "");
+            item.put("wordText", wordText != null ? wordText : "");
+            item.put("meaning", meaning != null ? meaning : "");
+            item.put("example", example != null ? example : "");
+            item.put("hindiMeaning", hindiMeaning != null ? hindiMeaning : "");
+            item.put("hindiExample", hindiExample != null ? hindiExample : "");
+            org.json.JSONArray opts = new org.json.JSONArray();
+            if (options != null) {
+                for (String opt : options) opts.put(opt);
+            }
+            item.put("options", opts);
+            item.put("correctIndex", correctIndex);
+            item.put("timestamp", System.currentTimeMillis());
+            updated.put(item);
+            prefs.edit().putString(KEY_PENDING_QUEUE, updated.toString()).apply();
+            Log.d(TAG, "Enqueued pending notification: " + wordText + " (Total pending: " + updated.length() + ")");
+        } catch (Exception e) {
+            Log.e(TAG, "Error enqueuing pending notification", e);
+        }
+    }
+
+    public static void removePendingNotification(Context context, int notifId, String wordId) {
+        try {
+            SharedPreferences prefs = getPrefs(context);
+            String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.getJSONObject(i);
+                boolean match = false;
+                if (notifId != -1 && obj.optInt("notifId", -1) == notifId) {
+                    match = true;
+                } else if (wordId != null && !wordId.isEmpty() && wordId.equals(obj.optString("wordId"))) {
+                    match = true;
+                }
+                if (!match) {
+                    updated.put(obj);
+                }
+            }
+            prefs.edit().putString(KEY_PENDING_QUEUE, updated.toString()).apply();
+            Log.d(TAG, "Removed from pending queue (Remaining: " + updated.length() + ")");
+        } catch (Exception e) {
+            Log.e(TAG, "Error removing pending notification", e);
+        }
+    }
+
+    public static int getPendingNotificationCount(Context context) {
+        try {
+            SharedPreferences prefs = getPrefs(context);
+            String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
+            return new org.json.JSONArray(raw).length();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static org.json.JSONObject popNextPendingNotification(Context context) {
+        try {
+            SharedPreferences prefs = getPrefs(context);
+            String raw = prefs.getString(KEY_PENDING_QUEUE, "[]");
+            org.json.JSONArray arr = new org.json.JSONArray(raw);
+            if (arr.length() == 0) return null;
+            org.json.JSONObject first = arr.getJSONObject(0);
+            org.json.JSONArray remaining = new org.json.JSONArray();
+            for (int i = 1; i < arr.length(); i++) {
+                remaining.put(arr.getJSONObject(i));
+            }
+            prefs.edit().putString(KEY_PENDING_QUEUE, remaining.toString()).apply();
+            return first;
+        } catch (Exception e) {
+            Log.e(TAG, "Error popping pending notification", e);
+            return null;
+        }
     }
 
     public static void showNotification(

@@ -61,3 +61,10 @@ export interface BulkWordFailure {
   reason: string;
 }
 
+export interface PracticeAllSession {
+  words: VocabularyWord[];      // All words to practice (shuffled)
+  currentIndex: number;         // Index of current word
+  answers: { wordId: string; correct: boolean }[];  // Track answers
+  allSavedWords: VocabularyWord[];  // For quiz option generation
+}
+

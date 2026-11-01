@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
 }) => {
   return (
-    <header className="sticky top-0 z-40 w-full shrink-0 bg-white dark:bg-[#1B1D25]/95 border-b border-slate-200/90 dark:border-[#30333E] shadow-xs safe-top transition-colors backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full shrink-0 bg-white dark:bg-[#1B1D25]/95 border-b border-slate-200 dark:border-[#3E4452] shadow-xs safe-top transition-colors backdrop-blur-md">
       <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
         {/* Left: Logo + Title */}
         <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
@@ -27,10 +27,10 @@ export const Header: React.FC<HeaderProps> = ({
             <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-zinc-100 tracking-tight leading-tight truncate">
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#F1F1F5] tracking-tight leading-tight truncate">
               Voco
             </h1>
-            <p className="text-[11px] text-slate-400 dark:text-zinc-400 font-medium leading-tight truncate">
+            <p className="text-[11px] text-slate-500 dark:text-[#A5A8B5] font-medium leading-tight truncate">
               {savedWordsCount} {savedWordsCount === 1 ? 'word' : 'words'} saved
             </p>
           </div>
@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onToggleTheme}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-[#A5A8B5] dark:hover:text-amber-400 bg-slate-100/80 hover:bg-slate-200/80 dark:bg-[#222530] dark:hover:bg-[#2A2E3C] border border-slate-200/80 dark:border-[#30333E] transition-all focus:outline-none focus:ring-2 focus:ring-[#8875F5]/40"
+            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-[#A5A8B5] dark:hover:text-amber-400 bg-slate-100 hover:bg-slate-200 dark:bg-[#222530] dark:hover:bg-[#2A2E3C] border border-slate-300 dark:border-[#3E4452] transition-all focus:outline-none focus:ring-2 focus:ring-[#8875F5]/40 shadow-xs"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             aria-label="Toggle dark mode"
           >

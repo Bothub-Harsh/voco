@@ -125,20 +125,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onClick={() => setActiveSection('reminders')}
           className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
             activeSection === 'reminders' || activeSection === 'all'
-              ? 'border-[#6554F5] dark:border-[#6554F5] ring-2 ring-[#6554F5]/25 bg-white dark:bg-[#111318]'
-              : 'border-slate-200/90 dark:border-[#303541] bg-white dark:bg-[#111318] hover:border-slate-300 dark:hover:border-zinc-700'
+              ? 'border-[#6554F5] dark:border-[#8875F5] ring-2 ring-[#6554F5]/30 bg-indigo-50/50 dark:bg-[#252834]'
+              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
           }`}
         >
           <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
               <Bell className="w-4 h-4" />
             </div>
             {/* Visual status indicator */}
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                 remindersActive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                  : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
+                  : 'bg-slate-100 dark:bg-[#15171E] text-slate-600 dark:text-[#A5A8B5] border border-slate-300 dark:border-[#3E4452]'
               }`}
             >
               <span
@@ -150,10 +150,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </span>
           </div>
           <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 leading-tight">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
               Reminders
             </h3>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-400 mt-0.5 truncate">
+            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
               Intervals &amp; flow
             </p>
           </div>
@@ -165,8 +165,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onClick={() => setActiveSection('background')}
           className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
             activeSection === 'background' || activeSection === 'all'
-              ? 'border-emerald-500 dark:border-[#28C995] ring-2 ring-emerald-500/25 bg-white dark:bg-[#111318]'
-              : 'border-slate-200/90 dark:border-[#303541] bg-white dark:bg-[#111318] hover:border-slate-300 dark:hover:border-zinc-700'
+              ? 'border-emerald-500 dark:border-[#28C995] ring-2 ring-emerald-500/30 bg-emerald-50/40 dark:bg-[#252834]'
+              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
           }`}
         >
           <div className="flex items-start justify-between w-full mb-2">
@@ -177,8 +177,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <span
               className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                 allBackgroundReady
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
+                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/80'
               }`}
             >
               {allBackgroundReady ? (
@@ -195,10 +195,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </span>
           </div>
           <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 leading-tight">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
               Background
             </h3>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-400 mt-0.5 truncate">
+            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
               Battery &amp; wakeup
             </p>
           </div>
@@ -210,8 +210,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onClick={() => setActiveSection('data')}
           className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
             activeSection === 'data' || activeSection === 'all'
-              ? 'border-sky-500 dark:border-sky-400 ring-2 ring-sky-500/25 bg-white dark:bg-[#111318]'
-              : 'border-slate-200/90 dark:border-[#303541] bg-white dark:bg-[#111318] hover:border-slate-300 dark:hover:border-zinc-700'
+              ? 'border-sky-500 dark:border-sky-400 ring-2 ring-sky-500/30 bg-sky-50/40 dark:bg-[#252834]'
+              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
           }`}
         >
           <div className="flex items-start justify-between w-full mb-2">
@@ -219,15 +219,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <Database className="w-4 h-4" />
             </div>
             {/* Visual status indicator */}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800/80">
               {totalWords} Words
             </span>
           </div>
           <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 leading-tight">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
               Data &amp; Backup
             </h3>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-400 mt-0.5 truncate">
+            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
               Export, import &amp; text
             </p>
           </div>
@@ -239,25 +239,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onClick={() => setActiveSection('appearance')}
           className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
             activeSection === 'appearance' || activeSection === 'all'
-              ? 'border-[#6554F5] dark:border-[#8172F8] ring-2 ring-[#6554F5]/25 bg-white dark:bg-[#111318]'
-              : 'border-slate-200/90 dark:border-[#303541] bg-white dark:bg-[#111318] hover:border-slate-300 dark:hover:border-zinc-700'
+              ? 'border-[#6554F5] dark:border-[#8875F5] ring-2 ring-[#6554F5]/30 bg-purple-50/40 dark:bg-[#252834]'
+              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
           }`}
         >
           <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
               {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-500" />}
             </div>
             {/* Visual status indicator */}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 dark:bg-zinc-800 text-purple-700 dark:text-zinc-200 border border-purple-200 dark:border-zinc-700">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 dark:bg-[#15171E] text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800/80">
               {theme === 'dark' ? 'Dark' : 'Light'}
             </span>
           </div>
           <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 leading-tight">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
               Appearance
             </h3>
-            <p className="text-[10px] text-slate-400 dark:text-zinc-400 mt-0.5 truncate">
-              {theme === 'dark' ? 'OLED True Black' : 'Clean Light'}
+            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
+              {theme === 'dark' ? 'OLED Dark' : 'Clean Light'}
             </p>
           </div>
         </button>
@@ -265,8 +265,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* ━━━━━━━━━━━━━━━━━━━━ 2. NOTIFICATIONS & REMINDERS SECTION ━━━━━━━━━━━━━━━━━━━━ */}
       {(activeSection === 'reminders' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#111318] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#303541] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#292E38] pb-3">
+        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
                 <Bell className="w-4 h-4" />
@@ -426,8 +426,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* ━━━━━━━━━━━━━━━━━━━━ 3. BACKGROUND ACTIVITY SECTION ━━━━━━━━━━━━━━━━━━━━ */}
       {(activeSection === 'background' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#111318] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#303541] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#292E38] pb-3">
+        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#28C995]/15 text-emerald-600 dark:text-[#28C995] flex items-center justify-center">
                 <ShieldCheck className="w-4 h-4" />
@@ -569,8 +569,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* ━━━━━━━━━━━━━━━━━━━━ 4. DATA & BACKUP SECTION ━━━━━━━━━━━━━━━━━━━━ */}
       {(activeSection === 'data' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#111318] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#303541] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#292E38] pb-3">
+        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center">
                 <Database className="w-4 h-4" />
@@ -620,8 +620,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       {/* ━━━━━━━━━━━━━━━━━━━━ 5. APPEARANCE SECTION ━━━━━━━━━━━━━━━━━━━━ */}
       {(activeSection === 'appearance' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#111318] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#303541] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#292E38] pb-3">
+        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
             <div className="flex items-center space-x-2.5">
               <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
                 {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-500" />}
@@ -651,8 +651,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               }}
               className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
                 theme === 'light'
-                  ? 'border-[#6554F5] ring-2 ring-[#6554F5]/30 bg-indigo-50/40 shadow-xs'
-                  : 'border-slate-200/90 dark:border-[#303541] bg-slate-50/60 dark:bg-[#191C23] hover:border-slate-300 dark:hover:border-zinc-700'
+                  ? 'border-[#6554F5] ring-2 ring-[#6554F5]/30 bg-indigo-50/50 shadow-xs'
+                  : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] hover:border-slate-400 dark:hover:border-[#4F5568]'
               }`}
             >
               <div className="flex items-center justify-between mb-3">
@@ -664,10 +664,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 )}
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                <p className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5]">
                   Light Mode
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
                   Crisp daylight contrast
                 </p>
               </div>
@@ -681,24 +681,24 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               }}
               className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
                 theme === 'dark'
-                  ? 'border-[#8172F8] ring-2 ring-[#8172F8]/30 bg-[#6554F5]/10 shadow-xs'
-                  : 'border-slate-200/90 dark:border-[#303541] bg-slate-50/60 dark:bg-[#191C23] hover:border-slate-300 dark:hover:border-zinc-700'
+                  ? 'border-[#8875F5] ring-2 ring-[#8875F5]/30 bg-[#6554F5]/15 shadow-xs'
+                  : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] hover:border-slate-400 dark:hover:border-[#4F5568]'
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl bg-zinc-900 text-[#8172F8] flex items-center justify-center border border-zinc-700">
+                <div className="w-8 h-8 rounded-xl bg-[#222530] text-[#8875F5] flex items-center justify-center border border-[#3E4452]">
                   <Moon className="w-4 h-4" />
                 </div>
                 {theme === 'dark' && (
-                  <CheckCircle2 className="w-4 h-4 text-[#8172F8]" />
+                  <CheckCircle2 className="w-4 h-4 text-[#8875F5]" />
                 )}
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                <p className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5]">
                   OLED Dark
                 </p>
-                <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                  True black &amp; battery saver
+                <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
+                  Comfortable soft charcoal
                 </p>
               </div>
             </button>

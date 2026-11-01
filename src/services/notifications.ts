@@ -61,6 +61,14 @@ const REMINDERS_KEY = 'my_vocab_reminders_enabled';
 const LAST_WORD_KEY = 'my_vocab_last_notified_id';
 const INTERVAL_KEY = 'my_vocab_reminder_interval_mins';
 const NEXT_TRIGGER_KEY = 'my_vocab_next_reminder_timestamp';
+const PENDING_NOTIFICATION_QUEUE_KEY = 'voco_pending_notifications_queue';
+
+export interface PendingNotificationItem {
+  notificationId?: number;
+  wordId: string;
+  word: string;
+  timestamp: number;
+}
 
 // Default interval in milliseconds (5 minutes)
 export const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
@@ -70,25 +78,92 @@ export const REMINDER_CHANNEL_ID = 'voco_reminders';
 let nativeListenersInitialized = false;
 
 // ─────────────────────────────────────────────
-// LocalStorage helpers
+// LocalStorage helpers & Pending Notification Queue
 // ─────────────────────────────────────────────
+const memStore = new Map<string, string>();
+
 function getStorageItem(key: string): string | null {
-  if (typeof localStorage !== 'undefined') {
-    return localStorage.getItem(key);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem) {
+      return localStorage.getItem(key);
+    }
+  } catch {
+    // fallback to memStore
   }
-  return null;
+  return memStore.get(key) ?? null;
 }
 
 function setStorageItem(key: string, value: string): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(key, value);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // fallback to memStore
   }
+  memStore.set(key, value);
 }
 
 function removeStorageItem(key: string): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(key);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.removeItem) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // fallback to memStore
   }
+  memStore.delete(key);
+}
+
+export function getPendingNotificationQueue(): PendingNotificationItem[] {
+  const data = getStorageItem(PENDING_NOTIFICATION_QUEUE_KEY);
+  if (!data) return [];
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePendingNotificationQueue(queue: PendingNotificationItem[]): void {
+  setStorageItem(PENDING_NOTIFICATION_QUEUE_KEY, JSON.stringify(queue));
+}
+
+export function enqueuePendingNotification(item: PendingNotificationItem): PendingNotificationItem[] {
+  const current = getPendingNotificationQueue();
+  // Filter out matching wordId so it is updated at the tail without duplicate entries
+  const filtered = current.filter((q) => q.wordId !== item.wordId);
+  filtered.push(item);
+  savePendingNotificationQueue(filtered);
+  return filtered;
+}
+
+export function dequeuePendingNotification(wordId?: string): PendingNotificationItem | null {
+  const current = getPendingNotificationQueue();
+  if (current.length === 0) return null;
+  if (wordId) {
+    const idx = current.findIndex((q) => q.wordId === wordId);
+    if (idx !== -1) {
+      const found = current[idx];
+      current.splice(idx, 1);
+      savePendingNotificationQueue(current);
+      return found;
+    }
+  }
+  const item = current.shift() || null;
+  savePendingNotificationQueue(current);
+  return item;
+}
+
+export function removePendingNotificationByWordId(wordId: string): void {
+  const current = getPendingNotificationQueue();
+  const updated = current.filter((q) => q.wordId !== wordId);
+  savePendingNotificationQueue(updated);
+}
+
+export function clearPendingNotificationQueue(): void {
+  removeStorageItem(PENDING_NOTIFICATION_QUEUE_KEY);
 }
 
 // ─────────────────────────────────────────────
@@ -417,6 +492,11 @@ export async function scheduleTestNotification(word: VocabularyWord): Promise<bo
   if (!Capacitor.isNativePlatform()) return false;
   try {
     await ensureNotificationChannel();
+    enqueuePendingNotification({
+      wordId: word.id,
+      word: word.word,
+      timestamp: Date.now(),
+    });
     await VocoScheduler.sendTestNotification({
       wordId: word.id,
       word: word.word,
@@ -474,6 +554,11 @@ export async function dispatchWordNotification(
     // Use a unique timestamp-based tag so each reminder creates a NEW notification
     // instead of replacing the previous one (same tag = replacement in browser notifications)
     const uniqueTag = `vocab-reminder-${word.id}-${Date.now()}`;
+    enqueuePendingNotification({
+      wordId: word.id,
+      word: word.word,
+      timestamp: Date.now(),
+    });
 
     if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.ready.catch(() => null);

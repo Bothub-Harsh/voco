@@ -66,17 +66,17 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
   };
 
   return (
-    <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-200/90 dark:border-[#30333E] p-4 sm:p-5 mb-4 transition-colors">
+    <div className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 mb-4 transition-colors">
       {/* Section Header */}
       <div className="flex items-center space-x-2 mb-3">
         <div className="w-2 h-2 rounded-full bg-[#6554F5]" />
-        <h2 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
+        <h2 className="text-sm font-bold text-slate-900 dark:text-[#F1F1F5] tracking-tight">
           Add a New Word
         </h2>
       </div>
 
       {/* Compact Segmented Mode Switcher */}
-      <div className="bg-slate-100/90 dark:bg-[#222530] p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-200/80 dark:border-[#30333E]">
+      <div className="bg-slate-100 dark:bg-[#15171E] p-1 rounded-xl mb-4 grid grid-cols-2 gap-1 border border-slate-250 border-slate-300/80 dark:border-[#3E4452]">
         <button
           type="button"
           onClick={() => {
@@ -86,8 +86,8 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           disabled={isLoading}
           className={`py-1.5 px-3 rounded-lg flex items-center justify-center space-x-1.5 text-xs font-semibold transition-all ${
             entryMode === 'ai'
-              ? 'bg-white dark:bg-zinc-850 text-indigo-700 dark:text-[#8172F8] shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
-              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+              ? 'bg-white dark:bg-[#252834] text-[#6554F5] dark:text-[#9F91FF] shadow-xs ring-1 ring-slate-300 dark:ring-[#4F5568]'
+              : 'text-slate-600 dark:text-[#A5A8B5] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <Sparkles className="w-3.5 h-3.5 text-[#6554F5] shrink-0" />
@@ -103,8 +103,8 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           disabled={isLoading}
           className={`py-1.5 px-3 rounded-lg flex items-center justify-center space-x-1.5 text-xs font-semibold transition-all ${
             entryMode === 'manual'
-              ? 'bg-white dark:bg-zinc-850 text-indigo-700 dark:text-[#8172F8] shadow-xs ring-1 ring-slate-200/80 dark:ring-zinc-700'
-              : 'text-slate-500 dark:text-zinc-400 hover:text-slate-700 dark:hover:text-zinc-200'
+              ? 'bg-white dark:bg-[#252834] text-[#6554F5] dark:text-[#9F91FF] shadow-xs ring-1 ring-slate-300 dark:ring-[#4F5568]'
+              : 'text-slate-600 dark:text-[#A5A8B5] hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <PenTool className="w-3.5 h-3.5 text-[#6554F5] shrink-0" />
@@ -118,7 +118,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           <div>
             <label
               htmlFor="word-input-ai"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1.5"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1.5"
             >
               English Word
             </label>
@@ -130,7 +130,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
                 onChange={(e) => setInputWord(e.target.value)}
                 placeholder="e.g. Compassion, Serene..."
                 disabled={isLoading}
-                className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50"
+                className="flex-1 px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#8875F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 shadow-xs"
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck="false"
@@ -161,7 +161,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           <div>
             <label
               htmlFor="word-input-manual"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1"
             >
               English Word
             </label>
@@ -172,7 +172,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               onChange={(e) => setInputWord(e.target.value)}
               placeholder="e.g. Serene"
               disabled={isLoading}
-              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 shadow-xs"
               autoComplete="off"
               autoCapitalize="none"
               spellCheck="false"
@@ -183,7 +183,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           <div>
             <label
               htmlFor="meaning-input-manual"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1"
             >
               Meaning
             </label>
@@ -194,7 +194,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               onChange={(e) => setManualMeaning(e.target.value)}
               placeholder="Write a clear, simple meaning..."
               disabled={isLoading}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 resize-none shadow-xs"
               required
             />
           </div>
@@ -202,9 +202,9 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
           <div>
             <label
               htmlFor="example-input-manual"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1"
             >
-              Example Sentence <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+              Example Sentence <span className="text-slate-400 dark:text-[#A5A8B5] font-normal">(Optional)</span>
             </label>
             <textarea
               id="example-input-manual"
@@ -213,16 +213,16 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               onChange={(e) => setManualExample(e.target.value)}
               placeholder="e.g. The quiet lake was peaceful and serene."
               disabled={isLoading}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 resize-none shadow-xs"
             />
           </div>
 
           <div>
             <label
               htmlFor="hindi-meaning-input-manual"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1"
             >
-              Hindi Meaning <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+              Hindi Meaning <span className="text-slate-400 dark:text-[#A5A8B5] font-normal">(Optional)</span>
             </label>
             <textarea
               id="hindi-meaning-input-manual"
@@ -231,16 +231,16 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               onChange={(e) => setManualHindiMeaning(e.target.value)}
               placeholder="e.g. शांत और स्थिर — अशांति से मुक्त।"
               disabled={isLoading}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 resize-none shadow-xs"
             />
           </div>
 
           <div>
             <label
               htmlFor="hindi-example-input-manual"
-              className="block text-xs font-semibold text-slate-600 dark:text-zinc-300 mb-1"
+              className="block text-xs font-semibold text-slate-700 dark:text-[#F1F1F5] mb-1"
             >
-              Hindi Example <span className="text-slate-400 dark:text-zinc-500 font-normal">(Optional)</span>
+              Hindi Example <span className="text-slate-400 dark:text-[#A5A8B5] font-normal">(Optional)</span>
             </label>
             <textarea
               id="hindi-example-input-manual"
@@ -249,7 +249,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
               onChange={(e) => setManualHindiExample(e.target.value)}
               placeholder="e.g. वह शांत झील के किनारे बैठा था।"
               disabled={isLoading}
-              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-50 resize-none"
+              className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:bg-white focus:dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] transition-all text-slate-800 dark:text-[#F1F1F5] placeholder:text-slate-400 dark:placeholder:text-[#6B6E80] disabled:opacity-50 resize-none shadow-xs"
             />
           </div>
 
@@ -257,7 +257,7 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
             <button
               type="submit"
               disabled={isLoading || !inputWord.trim() || !manualMeaning.trim()}
-              className="inline-flex items-center justify-center px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold text-xs sm:text-sm transition-all shadow-xs min-w-[120px]"
+              className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] disabled:bg-slate-200 disabled:dark:bg-zinc-800 disabled:text-slate-400 disabled:dark:text-zinc-600 disabled:cursor-not-allowed text-white font-semibold text-xs sm:text-sm transition-all shadow-xs min-w-[120px]"
             >
               {isLoading ? (
                 <>

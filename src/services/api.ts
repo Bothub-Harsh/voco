@@ -32,6 +32,30 @@ export class GenerationError extends Error {
 }
 
 /**
+ * Checks whether an error is caused by lost internet connectivity,
+ * network drop, or request timeout.
+ */
+export function isNetworkOrOfflineError(err: unknown): boolean {
+  if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return true;
+  }
+  if (!err) return false;
+  if (err instanceof GenerationError && err.type === 'NETWORK_FAILURE') {
+    return true;
+  }
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('no internet') ||
+    msg.includes('network') ||
+    msg.includes('fetch') ||
+    msg.includes('timeout') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('aborterror') ||
+    msg.includes('econnrefused')
+  );
+}
+
+/**
  * Classifies an unknown error into one of the 5 required categories.
  */
 export function classifyError(err: unknown, word?: string): BulkWordFailure {
@@ -43,7 +67,7 @@ export function classifyError(err: unknown, word?: string): BulkWordFailure {
     };
   }
 
-  const rawMessage = err instanceof Error ? err.message : String(err);
+  const rawMessage = err instanceof Error ? err.message : String(err || '');
   const isAbort =
     (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') ||
     rawMessage.includes('timeout') ||
@@ -54,14 +78,6 @@ export function classifyError(err: unknown, word?: string): BulkWordFailure {
       word: word || 'Unknown',
       type: 'RATE_LIMIT',
       reason: 'Rate limit (429): AI service limit reached. Retry in a moment.',
-    };
-  }
-
-  if (isAbort || rawMessage.includes('fetch') || rawMessage.includes('network') || rawMessage.includes('Failed to fetch')) {
-    return {
-      word: word || 'Unknown',
-      type: 'NETWORK_FAILURE',
-      reason: 'Network failure: Connection dropped or timed out after 40s.',
     };
   }
 
@@ -78,6 +94,21 @@ export function classifyError(err: unknown, word?: string): BulkWordFailure {
       word: word || 'Unknown',
       type: 'MALFORMED_JSON',
       reason: 'Malformed JSON: AI returned unparseable text format.',
+    };
+  }
+
+  if (
+    (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    isAbort ||
+    rawMessage.includes('fetch') ||
+    rawMessage.includes('network') ||
+    rawMessage.includes('Failed to fetch') ||
+    rawMessage.includes('No internet connection')
+  ) {
+    return {
+      word: word || 'Unknown',
+      type: 'NETWORK_FAILURE',
+      reason: 'No internet connection. Please check your network.',
     };
   }
 
@@ -225,7 +256,7 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
       model: 'unknown',
       message: isAbort
         ? 'Backend service is starting up. Please allow a few seconds.'
-        : 'Cannot reach vocabulary server. Please check your internet connection.',
+        : 'No internet connection. Please check your network.',
       reachable: false,
     };
   }
@@ -237,6 +268,13 @@ export async function checkBackendStatus(): Promise<BackendStatus> {
  */
 export async function generateVocabularyFromAI(word: string): Promise<WordQuizPayload> {
   const cleanWord = validateInputWord(word);
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new GenerationError(
+      'NETWORK_FAILURE',
+      'No internet connection. Please check your network.',
+      cleanWord
+    );
+  }
   const base = getApiBaseUrl();
 
   const maxAttempts = 3;
@@ -444,10 +482,16 @@ export async function refreshVocabularyFromAI(
   currentExample?: string
 ): Promise<WordQuizPayload> {
   const cleanWord = validateInputWord(word);
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new Error('No internet connection. Please check your network.');
+  }
   const base = getApiBaseUrl();
 
   let response: Response;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     response = await fetch(`${base}/api/vocabulary/refresh`, {
       method: 'POST',
       headers: {
@@ -459,10 +503,14 @@ export async function refreshVocabularyFromAI(
         currentExample,
         isRefresh: true,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     // Fallback to /api/vocabulary/generate with isRefresh flag if /api/vocabulary/refresh is not available
     if (response.status === 404) {
+      const fallbackCtrl = new AbortController();
+      const fallbackTimeout = setTimeout(() => fallbackCtrl.abort(), REQUEST_TIMEOUT_MS);
       response = await fetch(`${base}/api/vocabulary/generate`, {
         method: 'POST',
         headers: {
@@ -474,12 +522,15 @@ export async function refreshVocabularyFromAI(
           currentExample,
           isRefresh: true,
         }),
+        signal: fallbackCtrl.signal,
       });
+      clearTimeout(fallbackTimeout);
     }
   } catch (err) {
-    throw new Error(
-      'Unable to connect to vocabulary server. Please verify your internet connection.'
-    );
+    if (isNetworkOrOfflineError(err)) {
+      throw new Error('No internet connection. Please check your network.');
+    }
+    throw new Error('No internet connection. Please check your network.');
   }
 
   const data = await response.json().catch(() => null);

@@ -88,6 +88,8 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         });
 
         readIntentData(getIntent());
+        // Remove currently active notification from persistent pending queue
+        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
         initViews();
         applyResponsiveCardWidth();
     }
@@ -97,6 +99,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         readIntentData(intent);
+        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
         hasAnswered = false;
         initViews();
         applyResponsiveCardWidth();
@@ -299,8 +302,63 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         layoutFeedback.setVisibility(View.VISIBLE);
 
+        // Check if there are other pending reminder notifications in the queue
+        int pendingRemaining = VocoAlarmScheduler.getPendingNotificationCount(this);
+        Button btnClose = findViewById(R.id.btn_close);
+        if (btnClose != null) {
+            if (pendingRemaining > 0) {
+                btnClose.setText("Next");
+                btnClose.setOnClickListener(v -> handleNextPendingQuiz());
+            } else {
+                btnClose.setText("Close");
+                btnClose.setOnClickListener(v -> dismissQuiz());
+            }
+        }
+
         // Record statistics locally in SharedPreferences for synchronization
         recordQuizStats(wordText, isCorrect);
+    }
+
+    /**
+     * Advances to the next pending practice reminder from the persistent queue.
+     */
+    private void handleNextPendingQuiz() {
+        org.json.JSONObject nextItem = VocoAlarmScheduler.popNextPendingNotification(this);
+        if (nextItem == null) {
+            dismissQuiz();
+            return;
+        }
+
+        int nextNotifId = nextItem.optInt("notifId", -1);
+        if (nextNotifId != -1) {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(nextNotifId);
+            }
+        }
+
+        wordId = nextItem.optString("wordId", "");
+        wordText = nextItem.optString("wordText", "Vocabulary");
+        correctMeaning = nextItem.optString("meaning", "");
+        exampleSentence = nextItem.optString("example", "");
+        hindiMeaning = nextItem.optString("hindiMeaning", "");
+        hindiExample = nextItem.optString("hindiExample", "");
+        correctIndex = nextItem.optInt("correctIndex", 0);
+        notificationId = nextNotifId;
+
+        options = new ArrayList<>();
+        org.json.JSONArray opts = nextItem.optJSONArray("options");
+        if (opts != null && opts.length() >= 4) {
+            for (int i = 0; i < opts.length(); i++) {
+                options.add(opts.optString(i));
+            }
+        } else {
+            options = fallbackOptions(correctMeaning);
+            correctIndex = 0;
+        }
+
+        hasAnswered = false;
+        initViews();
     }
 
     /**

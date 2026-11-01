@@ -259,9 +259,9 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
       aria-modal="true"
       className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-5 transition-colors overflow-hidden"
     >
-      <div className="bg-white dark:bg-zinc-950 w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-5 sm:p-6 relative transition-colors">
+      <div className="bg-white dark:bg-[#1B1D25] w-full max-w-lg max-h-[90vh] flex flex-col rounded-2xl shadow-elevated border border-slate-300 dark:border-[#3E4452] p-5 sm:p-6 relative transition-colors">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-850 mb-3 shrink-0">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#2E3341] mb-3 shrink-0">
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
               <Sparkles className="w-4 h-4" />
@@ -314,7 +314,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
 
           {/* Failed Words Breakdown with Separate Category Badges */}
           {failedWords.length > 0 && (
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 space-y-2">
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-300 dark:border-[#3E4452] space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-800 dark:text-zinc-200">
                 <span>Failed Words ({failedWords.length}):</span>
                 <span className="text-[10px] text-amber-600 dark:text-amber-400">Click &ldquo;Retry Failed Words&rdquo; below</span>
@@ -327,7 +327,7 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
                   return (
                     <div
                       key={idx}
-                      className="p-2 rounded-lg bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 space-y-1 shadow-2xs"
+                      className="p-2 rounded-lg bg-white dark:bg-[#1B1D25] border border-slate-300 dark:border-[#3E4452] space-y-1 shadow-2xs"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-slate-900 dark:text-zinc-100">{item.word}</span>
@@ -367,13 +367,13 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
               onChange={(e) => setInputText(e.target.value)}
               disabled={isProcessing}
               placeholder={`Enter 19–100 words (one per line)...\n\nExample:\nRough\nFood\nFriends\nChair\nBooks\nHabits`}
-              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200/90 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900 focus:bg-white focus:dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#6554F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-60 font-mono resize-none"
+              className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] focus:outline-none focus:ring-2 focus:ring-[#6554F5]/30 focus:border-[#6554F5] dark:focus:border-[#8875F5] transition-all text-slate-800 dark:text-zinc-100 placeholder:text-slate-400 dark:placeholder:text-zinc-500 disabled:opacity-60 font-mono resize-none"
             />
           </div>
 
           {/* Progress Display: "Generating meanings: 6 of 20" */}
           {isProcessing && currentProgress && (
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 space-y-2.5">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-300 dark:border-[#3E4452] space-y-2.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-slate-800 dark:text-zinc-100 flex items-center gap-1.5">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6554F5]" />
@@ -405,12 +405,12 @@ export const BulkAddModal: React.FC<BulkAddModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-zinc-850 mt-2 shrink-0">
+        <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200 dark:border-[#2E3341] mt-2 shrink-0">
           <button
             type="button"
             onClick={handleClose}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-900 text-slate-700 dark:text-zinc-300 text-xs font-semibold transition-all disabled:opacity-40"
+            className="px-4 py-2 rounded-xl border border-slate-300 dark:border-[#3E4452] hover:bg-slate-50 dark:hover:bg-[#222530] text-slate-700 dark:text-zinc-300 text-xs font-semibold transition-all disabled:opacity-40"
           >
             {successResult ? 'Done' : 'Cancel'}
           </button>

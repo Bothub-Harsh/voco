@@ -27,7 +27,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   savedWordsCount,
 }) => {
   return (
-    <nav className="shrink-0 w-full z-30 bg-white/97 dark:bg-[#1B1D25]/97 backdrop-blur-lg border-t border-slate-200/90 dark:border-[#30333E] transition-colors safe-bottom">
+    <nav className="shrink-0 w-full z-30 bg-white/95 dark:bg-[#1B1D25]/95 backdrop-blur-lg border-t border-slate-200 dark:border-[#3E4452] transition-colors safe-bottom shadow-sm">
       <div className="max-w-2xl mx-auto flex items-stretch">
         {tabs.map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;

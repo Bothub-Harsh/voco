@@ -1,19 +1,55 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, CheckCircle2, XCircle, RotateCcw, Volume2, Sparkles, BookOpen } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Volume2,
+  Sparkles,
+  BookOpen,
+  Trophy,
+} from 'lucide-react';
 import type { ActiveQuizSession } from '../types';
 import { speak, isTtsAvailable } from '../services/tts';
 import { FormattedMeaning } from './FormattedMeaning';
+
+export interface PracticeAllResult {
+  correctCount: number;
+  incorrectCount: number;
+  total: number;
+  score: number;
+}
 
 interface QuizScreenProps {
   quiz: ActiveQuizSession;
   onClose: () => void;
   onTryAgain: () => void;
+  practiceAll?: {
+    currentIndex: number;
+    totalWords: number;
+    onNextWord: () => void;
+    onAnswerSubmitted?: (correct: boolean) => void;
+    isCompleted?: boolean;
+    results?: PracticeAllResult;
+    onPracticeAgain?: () => void;
+  };
+  notificationQueue?: {
+    remainingCount: number;
+    onNext: () => void;
+  };
 }
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D'];
 
-export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgain }) => {
+export const QuizScreen: React.FC<QuizScreenProps> = ({
+  quiz,
+  onClose,
+  onTryAgain,
+  practiceAll,
+  notificationQueue,
+}) => {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -44,7 +80,11 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
 
   const handleCheckAnswer = () => {
     if (selectedIndex === null || hasSubmitted) return;
+    const answeredCorrectly = selectedIndex === quiz.correctIndex;
     setHasSubmitted(true);
+    if (practiceAll?.onAnswerSubmitted) {
+      practiceAll.onAnswerSubmitted(answeredCorrectly);
+    }
   };
 
   const handleTryAgain = () => {
@@ -64,30 +104,115 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
     }
   }, [isSpeaking, quiz.word]);
 
+  // ━━━ Practice All Words Completion View ━━━
+  if (practiceAll?.isCompleted && practiceAll.results) {
+    const { correctCount, incorrectCount, total, score } = practiceAll.results;
+
+    return createPortal(
+      <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom transition-colors">
+        <div className="bg-white dark:bg-[#1B1D25] w-full max-w-md rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-300 dark:border-[#3E4452] p-6 sm:p-8 text-center relative my-auto transition-colors animate-fade-in-up">
+          {/* Trophy Header */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-400/30">
+            <Trophy className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-1">
+            Practice Complete! 🎉
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-[#A5A8B5] mb-5">
+            You practiced all {total} saved {total === 1 ? 'word' : 'words'}.
+          </p>
+
+          {/* Score Card */}
+          <div className="bg-slate-50 dark:bg-[#15171E] border border-slate-300 dark:border-[#3E4452] rounded-2xl p-4 mb-5">
+            <div className="text-3xl font-black text-[#6554F5] dark:text-[#8875F5] mb-1">
+              {score}%
+            </div>
+            <p className="text-xs font-semibold text-slate-600 dark:text-[#A5A8B5]">
+              Overall Accuracy
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-200 dark:border-[#2E3341]">
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-[#28C995] flex items-center justify-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-[#28C995]" />
+                <span className="text-xs font-bold">{correctCount} Correct</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-300 flex items-center justify-center space-x-2">
+                <XCircle className="w-4 h-4 shrink-0 text-rose-500 dark:text-rose-400" />
+                <span className="text-xs font-bold">{incorrectCount} Incorrect</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2.5">
+            {practiceAll.onPracticeAgain && (
+              <button
+                type="button"
+                onClick={practiceAll.onPracticeAgain}
+                className="flex-1 inline-flex items-center justify-center py-2.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-semibold rounded-xl transition-all shadow-xs hover:shadow-sm"
+              >
+                <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                <span>Practice Again</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 px-4 border border-slate-300 dark:border-[#3E4452] hover:bg-slate-50 dark:hover:bg-[#222530] text-slate-700 dark:text-[#F1F1F5] text-xs font-semibold rounded-xl transition-all shadow-xs"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-black/85 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto safe-top safe-bottom transition-colors">
-      <div className="bg-white dark:bg-zinc-950 w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-elevated border border-slate-200/90 dark:border-zinc-800 p-5 sm:p-7 relative my-auto transition-colors">
+      <div className="bg-white dark:bg-[#1B1D25] w-full max-w-lg rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-300 dark:border-[#3E4452] p-5 sm:p-7 relative my-auto transition-colors">
         {/* Navigation & Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-5">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
           <button
             type="button"
             onClick={onClose}
             className="inline-flex items-center text-xs font-semibold text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors p-1.5 -ml-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900"
           >
             <ArrowLeft className="w-4 h-4 mr-1 text-slate-500 dark:text-zinc-400" />
-            <span>Back</span>
+            <span>{practiceAll ? 'Exit' : 'Back'}</span>
           </button>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-100/90 dark:border-indigo-800/60 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-            <span>Practice Quiz</span>
-          </span>
+          {practiceAll ? (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-100/90 dark:border-indigo-800/60 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+              <span>Word {practiceAll.currentIndex + 1} of {practiceAll.totalWords}</span>
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-100/90 dark:border-indigo-800/60 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+              <span>Practice Quiz</span>
+            </span>
+          )}
         </div>
+
+        {/* Progress Bar for Practice All Words */}
+        {practiceAll && (
+          <div className="w-full bg-slate-100 dark:bg-[#15171E] h-1.5 rounded-full overflow-hidden mb-4 border border-slate-200 dark:border-[#2E3341]">
+            <div
+              className="bg-[#6554F5] h-full transition-all duration-300 rounded-full"
+              style={{
+                width: `${Math.round(((practiceAll.currentIndex + 1) / practiceAll.totalWords) * 100)}%`,
+              }}
+            />
+          </div>
+        )}
 
         {/* Target Word */}
         <div className="text-center mb-5 sm:mb-6">
           <div className="inline-flex items-center justify-center space-x-2">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white capitalize tracking-tight">
-              {quiz.word}
+              {quiz.word.replace(/\*+/g, '')}
             </h2>
             {ttsAvailable && (
               <button
@@ -118,13 +243,13 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
             const isSelected = selectedIndex === index;
             const isThisOptionCorrect = index === quiz.correctIndex;
 
-            let cardClasses = 'border-slate-200/90 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-indigo-300 dark:hover:border-zinc-700 hover:bg-slate-50/50 dark:hover:bg-zinc-850 text-slate-700 dark:text-zinc-200 shadow-xs';
-            let badgeClasses = 'bg-slate-100 dark:bg-zinc-850 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-800';
+            let cardClasses = 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] hover:border-slate-400 dark:hover:border-[#4F5568] hover:bg-slate-50 dark:hover:bg-[#252834] text-slate-800 dark:text-[#F1F1F5] shadow-xs';
+            let badgeClasses = 'bg-slate-100 dark:bg-[#252834] text-slate-700 dark:text-[#C8CADB] border border-slate-300 dark:border-[#3E4452]';
 
             if (!hasSubmitted) {
               if (isSelected) {
-                cardClasses = 'border-[#6554F5] dark:border-[#6554F5] bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-950 dark:text-zinc-100 ring-2 ring-[#6554F5]/30 shadow-xs';
-                badgeClasses = 'bg-[#6554F5] dark:bg-[#6554F5] text-white shadow-xs border-[#6554F5]';
+                cardClasses = 'border-[#6554F5] dark:border-[#8875F5] bg-indigo-50/70 dark:bg-[#2A2E3D] text-indigo-950 dark:text-white ring-2 ring-[#6554F5]/30 shadow-xs font-semibold';
+                badgeClasses = 'bg-[#6554F5] dark:bg-[#8875F5] text-white shadow-xs border-[#6554F5]';
               }
             } else {
               if (isThisOptionCorrect) {
@@ -181,7 +306,7 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
           <div className="space-y-3.5 animate-fade-in-up">
             {isCorrect ? (
               /* ── Correct Answer Feedback ── */
-              <div className="p-3.5 sm:p-4 rounded-xl border bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80 text-emerald-950 dark:text-[#28C995]">
+              <div className="p-3.5 sm:p-4 rounded-xl border bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-950 dark:text-[#28C995] shadow-xs">
                 <div className="flex items-center space-x-1.5 mb-2 text-emerald-700 dark:text-[#28C995] font-bold text-sm sm:text-base">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-[#28C995]" />
                   <span>Brilliant! That&apos;s correct.</span>
@@ -198,18 +323,18 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
               </div>
             ) : (
               /* ── Incorrect Answer Feedback ── */
-              <div className="rounded-xl border border-rose-200 dark:border-rose-800/80 overflow-hidden">
+              <div className="rounded-xl border border-rose-300 dark:border-rose-700 overflow-hidden shadow-xs">
                 {/* Wrong-answer header */}
-                <div className="bg-rose-50/90 dark:bg-rose-950/40 px-3.5 py-2.5 flex items-center space-x-1.5">
+                <div className="bg-rose-50 dark:bg-rose-950/60 px-3.5 py-2.5 flex items-center space-x-1.5 border-b border-rose-200 dark:border-rose-800">
                   <XCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0" />
-                  <span className="text-xs font-bold text-rose-700 dark:text-rose-400">Not quite — here&apos;s the correct answer</span>
+                  <span className="text-xs font-bold text-rose-700 dark:text-rose-300">Not quite — here&apos;s the correct answer</span>
                 </div>
 
                 {/* Correct answer body */}
-                <div className="bg-white dark:bg-[#1B1D25] px-3.5 py-3 space-y-2.5">
+                <div className="bg-white dark:bg-[#15171E] px-3.5 py-3 space-y-2.5">
                   {/* Correct Answer heading + meaning */}
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A5A8B5] mb-1">
                       Correct Answer
                     </p>
                     <div className="text-sm font-semibold text-slate-800 dark:text-[#F1F1F5] leading-relaxed">
@@ -219,8 +344,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
 
                   {/* Hindi meaning */}
                   {quiz.hindiMeaning && (
-                    <div className="pt-2 border-t border-slate-100 dark:border-[#30333E]">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1">
+                    <div className="pt-2 border-t border-slate-200 dark:border-[#2E3341]">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A5A8B5] mb-1">
                         Hindi Meaning
                       </p>
                       <div className="text-sm text-slate-600 dark:text-[#A5A8B5] leading-relaxed flex items-start gap-1">
@@ -235,8 +360,8 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
 
             {/* Example sentence */}
             {quiz.example && (
-              <div className="bg-slate-50/90 dark:bg-[#1B1D25] rounded-xl p-3 sm:p-3.5 border border-slate-200/80 dark:border-[#30333E]">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#A5A8B5] mb-1 flex items-center gap-1">
+              <div className="bg-slate-50/90 dark:bg-[#15171E] rounded-xl p-3 sm:p-3.5 border border-slate-300 dark:border-[#3E4452]">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#A5A8B5] mb-1 flex items-center gap-1">
                   <BookOpen className="w-3 h-3 text-[#8875F5]" />
                   <span>Example in context</span>
                 </p>
@@ -251,23 +376,46 @@ export const QuizScreen: React.FC<QuizScreenProps> = ({ quiz, onClose, onTryAgai
               </div>
             )}
 
-            {/* Actions: Try Again & Done */}
+            {/* Actions: Try Again, Next / See Results, Done */}
             <div className="flex gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={handleTryAgain}
-                className="flex-1 inline-flex items-center justify-center py-2.5 px-4 border border-slate-200/90 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-850 active:bg-slate-100 dark:active:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-semibold rounded-xl transition-all shadow-xs"
+                className="flex-1 inline-flex items-center justify-center py-2.5 px-4 border border-slate-300 dark:border-[#3E4452] hover:bg-slate-50 dark:hover:bg-[#222530] text-slate-700 dark:text-[#F1F1F5] text-xs font-semibold rounded-xl transition-all shadow-xs"
               >
                 <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-slate-500 dark:text-zinc-400" />
                 <span>Try Again</span>
               </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-semibold rounded-xl transition-all shadow-xs hover:shadow-sm"
-              >
-                Done
-              </button>
+
+              {practiceAll ? (
+                <button
+                  type="button"
+                  onClick={practiceAll.onNextWord}
+                  className="flex-1 inline-flex items-center justify-center py-2.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-semibold rounded-xl transition-all shadow-xs hover:shadow-sm space-x-1.5"
+                >
+                  <span>
+                    {practiceAll.currentIndex < practiceAll.totalWords - 1 ? 'Next Word' : 'See Results'}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : notificationQueue && notificationQueue.remainingCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={notificationQueue.onNext}
+                  className="flex-1 inline-flex items-center justify-center py-2.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-semibold rounded-xl transition-all shadow-xs hover:shadow-sm space-x-1.5"
+                >
+                  <span>Next</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 py-2.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-semibold rounded-xl transition-all shadow-xs hover:shadow-sm"
+                >
+                  Done
+                </button>
+              )}
             </div>
           </div>
         )}

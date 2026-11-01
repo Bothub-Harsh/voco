@@ -95,36 +95,34 @@ async function handleVocabularyGeneration(req, res) {
     const isRefreshing = Boolean(isRefresh || currentMeaning);
 
     const prompt = isRefreshing
-      ? `You are an expert, beginner-friendly English vocabulary tutor explaining words naturally like ChatGPT in conversation.
+      ? `You are an expert, beginner-friendly English vocabulary tutor explaining words simply and naturally.
 Target English word: "${cleanWord}"
 Previous explanation: "${currentMeaning || ''}"
 Previous example sentence: "${currentExample || ''}"
 
-Goal: Provide a FRESH, alternative, ChatGPT-style explanation for "${cleanWord}".
+Goal: Provide a NOTICEABLY SIMPLER, EASIER, BEGINNER-FRIENDLY explanation for "${cleanWord}". Make it easier to understand than the previous explanation so a beginner understands immediately.
 
 Requirements:
-1. "word": The target English word with proper capitalization (e.g. "${cleanWord}").
-2. "meaning": Explain the word in ONE natural, complete, and easy-to-understand sentence using simple everyday English.
-   - Format: "**${cleanWord}** means [natural explanation with 2 to 4 key words or phrases in bold]."
-   - Example: "**Compelled** means being **forced or required** to do something because of a situation."
-   - Explain the complete meaning, not just synonyms.
-   - Bold the vocabulary word (**${cleanWord}**) and 2 to 4 important related words or phrases (**phrase**).
-   - Exactly ONE natural conversational sentence. Avoid long paragraphs, complicated vocabulary, or unnecessary explanations.
-3. "hindiMeaning": Give a simple, accurate, concise Hindi translation.
-   - Example: "मजबूर होना / विवश होना।"
-   - Use simple, natural everyday Hindi.
+1. "word": "${cleanWord}" (keep original word unchanged with proper capitalization).
+2. "meaning": Explain the complete meaning of the word (not just a synonym) in ONE short, simple, crystal-clear sentence using everyday English.
+   - Format: "**${cleanWord}** means [simple everyday explanation with 2 to 4 key words in bold]."
+   - Example: "**Compelled** means being **forced or required** to do something, even if you do not want to do it."
+   - Bold the target word (**${cleanWord}**) and 2 to 4 important keywords (**phrase**).
+   - Keep it short, natural, and conversational. Avoid complex vocabulary or long clauses.
+3. "hindiMeaning": Give a simple, natural Hindi translation in everyday language.
+   - Example: "मजबूर होना या किसी काम को करने के लिए विवश होना।"
 4. "example": Give ONE short, realistic everyday English sentence showing how the word is used.
-   - Example: "He was compelled to leave because of the circumstances."
-   - Keep the example in clean plain text (no bold asterisks).
-5. "options": Exactly 4 distinct multiple-choice definitions for what "${cleanWord}" means (array of 4 plain text strings, no markdown asterisks). One correct meaning, three intelligent distractors.
+   - Example: "He was compelled to tell the truth."
+   - Keep the example in clean plain text.
+5. "options": Exactly 4 distinct multiple-choice definitions for what "${cleanWord}" means (array of 4 plain text strings, no markdown asterisks). One correct meaning, three clear distractors.
 6. "correctIndex": Integer 0, 1, 2, or 3 pointing to the correct option.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "word": "${cleanWord}",
-  "meaning": "**${cleanWord}** means being **forced or required** to do something because of a situation.",
-  "example": "He was compelled to leave because of the circumstances.",
-  "hindiMeaning": "मजबूर होना / विवश होना।",
+  "meaning": "**${cleanWord}** means being **forced or required** to do something, even if you do not want to do it.",
+  "example": "He was compelled to tell the truth.",
+  "hindiMeaning": "मजबूर होना या किसी काम को करने के लिए विवश होना।",
   "options": [
     "being forced or required to do something",
     "feeling completely relaxed and calm",
