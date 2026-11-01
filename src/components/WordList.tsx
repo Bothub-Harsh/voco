@@ -25,6 +25,7 @@ interface WordListProps {
   words: VocabularyWord[];
   onOpenQuiz: (word: VocabularyWord) => void;
   onPracticeAll?: () => void;
+  onCreateStory?: () => void;
   onDeleteWord: (id: string, word: string) => Promise<void>;
   onDeleteBatch?: (ids: string[]) => Promise<void>;
   onUpdateWord: (word: VocabularyWord) => Promise<void>;
@@ -39,6 +40,7 @@ export const WordList: React.FC<WordListProps> = ({
   words,
   onOpenQuiz,
   onPracticeAll,
+  onCreateStory,
   onDeleteWord,
   onDeleteBatch,
   onUpdateWord,
@@ -370,7 +372,7 @@ export const WordList: React.FC<WordListProps> = ({
 
       {/* ━━ Practice All Words Button ━━ */}
       {words.length > 0 && !isSelectionActive && onPracticeAll && (
-        <div className="pt-0.5">
+        <div className="pt-0.5 flex flex-col gap-2">
           <button
             type="button"
             onClick={onPracticeAll}
@@ -379,6 +381,16 @@ export const WordList: React.FC<WordListProps> = ({
             <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
             <span>Practice All Words ({words.length})</span>
           </button>
+          {onCreateStory && words.length >= 2 && (
+            <button
+              type="button"
+              onClick={onCreateStory}
+              className="w-full py-2.5 px-4 bg-white dark:bg-[#1B1D25] border-2 border-[#6554F5]/50 dark:border-[#8875F5]/40 hover:border-[#6554F5] dark:hover:border-[#8875F5] hover:bg-indigo-50/50 dark:hover:bg-[#252834] text-[#6554F5] dark:text-[#8875F5] rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-2"
+            >
+              <span>📖</span>
+              <span>Create Story</span>
+            </button>
+          )}
         </div>
       )}
 

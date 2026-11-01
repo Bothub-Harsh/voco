@@ -600,3 +600,59 @@ export async function generateQuizDistractorsFromAI(
     return null;
   }
 }
+
+/**
+ * Calls the backend Groq proxy to generate a connected story using all saved vocabulary words.
+ * Returns { title, story, wordsUsed } where each vocab word is bolded with **word** markdown.
+ */
+export async function generateStoryFromAI(
+  words: { word: string; meaning: string }[]
+): Promise<{ title: string; story: string; wordsUsed: { word: string; meaning: string }[] }> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    throw new Error('No internet connection. Please check your network.');
+  }
+  if (!words || words.length === 0) {
+    throw new Error('No vocabulary words to generate a story from.');
+  }
+
+  const base = getApiBaseUrl();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/story/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (isNetworkOrOfflineError(err)) {
+      throw new Error('No internet connection. Please check your network.');
+    }
+    throw new Error('No internet connection. Please check your network.');
+  }
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('AI rate limit reached. Please wait a moment and try again.');
+    }
+    const message = data?.error || `Story generation failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (!data || typeof data.title !== 'string' || typeof data.story !== 'string') {
+    throw new Error('AI returned an unexpected response. Please try again.');
+  }
+
+  return {
+    title: data.title,
+    story: data.story,
+    wordsUsed: Array.isArray(data.wordsUsed) ? data.wordsUsed : words,
+  };
+}

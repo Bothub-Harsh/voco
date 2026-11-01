@@ -550,6 +550,127 @@ Respond ONLY with a valid JSON object:
   }
 });
 
+// ─── AI Story Generator ───
+app.post('/api/story/generate', async (req, res) => {
+  try {
+    const { words } = req.body;
+
+    if (!words || !Array.isArray(words) || words.length === 0) {
+      return res.status(400).json({ error: 'Please provide an array of vocabulary words.' });
+    }
+
+    const apiKey = process.env.GROQ_API_KEY?.trim();
+    if (!apiKey || apiKey === 'your_groq_api_key_here') {
+      return res.status(503).json({ error: 'Groq API key is not configured on the server.' });
+    }
+
+    // Build word list for prompt
+    const wordList = words
+      .map((w, i) => `${i + 1}. **${w.word}** — ${w.meaning}`)
+      .join('\n');
+
+    const wordCount = words.length;
+    const targetLength = Math.max(120, wordCount * 30);
+
+    const prompt = `You are a creative and funny English vocabulary story writer.
+
+Your job: Write a short, fun, engaging story using the vocabulary words listed below. The story must be easy to understand for English learners.
+
+Vocabulary Words (${wordCount} total):
+${wordList}
+
+Rules:
+1. Use every single vocabulary word naturally in the story — do not skip any.
+2. Write the story word in bold wherever it appears, like **word**. Bold only the exact vocabulary word as it appears, not surrounding text.
+3. The story should be approximately ${targetLength} words long — scale with the number of words.
+4. Make the story fun, slightly humorous, and easy to follow. Use emojis sparingly for style (1–3 max).
+5. Give the story a short, catchy title (5 words or fewer) — do NOT include "**" in the title.
+6. The story must flow naturally — do not just list sentences for each word separately.
+7. All vocabulary words must appear in their listed form (or grammatically inflected form such as plural/past tense). Bold the inflected form if used.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "title": "Short Catchy Title",
+  "story": "Full story text here with **bolded** vocabulary words.",
+  "wordsUsed": [
+    { "word": "word1", "meaning": "meaning1" },
+    { "word": "word2", "meaning": "meaning2" }
+  ]
+}
+
+Do NOT include any explanation outside the JSON.`;
+
+    for (const model of CANDIDATE_MODELS) {
+      try {
+        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a creative vocabulary story generator. Always respond with valid JSON only. No extra text.',
+              },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.85,
+            max_tokens: 1500,
+          }),
+        });
+
+        if (!groqResponse.ok) {
+          if (groqResponse.status === 429) {
+            return res.status(429).json({ error: 'AI rate limit reached. Please wait and try again.' });
+          }
+          continue;
+        }
+
+        const groqData = await groqResponse.json();
+        const rawText = groqData?.choices?.[0]?.message?.content?.trim() || '';
+
+        // Parse JSON response
+        let parsed;
+        try {
+          // Strip markdown code fences if present
+          const jsonStr = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+          parsed = JSON.parse(jsonStr);
+        } catch {
+          // Attempt to extract JSON object
+          const match = rawText.match(/\{[\s\S]*\}/);
+          if (match) {
+            try {
+              parsed = JSON.parse(match[0]);
+            } catch {
+              continue;
+            }
+          } else {
+            continue;
+          }
+        }
+
+        if (parsed && typeof parsed.title === 'string' && typeof parsed.story === 'string') {
+          return res.json({
+            title: parsed.title,
+            story: parsed.story,
+            wordsUsed: Array.isArray(parsed.wordsUsed) ? parsed.wordsUsed : words,
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return res.status(502).json({ error: 'Could not generate story at this time. Please try again.' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to process story generation request.' });
+  }
+});
+
 // Serve frontend build if dist folder exists
 const distPath = path.resolve(__dirname, '../dist');
 if (fs.existsSync(distPath)) {

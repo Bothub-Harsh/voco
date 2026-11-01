@@ -17,6 +17,7 @@ import {
   refreshVocabularyFromAI,
   checkBackendStatus,
   isNetworkOrOfflineError,
+  generateStoryFromAI,
 } from './services/api';
 import { generateFreshQuizSession, shuffleArray } from './services/quizGenerator';
 import {
@@ -53,6 +54,8 @@ import { WordList } from './components/WordList';
 import { QuizScreen } from './components/QuizScreen';
 import { BottomNav, type TabId } from './components/BottomNav';
 import { SettingsTab } from './components/SettingsTab';
+import { FlashcardScreen } from './components/FlashcardScreen';
+import { StoryModal, type StoryResult } from './components/StoryModal';
 import { initTheme, toggleTheme, type Theme } from './services/theme';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -101,6 +104,14 @@ export function App() {
     getPendingNotificationQueue()
   );
 
+  // ─── Flashcard Notification State ───
+  const [activeFlashcard, setActiveFlashcard] = useState<VocabularyWord | null>(null);
+
+  // ─── Story Generator State ───
+  const [storyResult, setStoryResult] = useState<StoryResult | null>(null);
+  const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
+  const [storyError, setStoryError] = useState<string | null>(null);
+
   const refreshPendingQueue = useCallback(() => {
     setPendingNotificationQueue(getPendingNotificationQueue());
   }, []);
@@ -137,6 +148,11 @@ export function App() {
   const openQuizForWord = useCallback((word: VocabularyWord) => {
     const freshSession = generateFreshQuizSession(word, wordsRef.current);
     setActiveQuizSession(freshSession);
+  }, []);
+
+  // Opens a flashcard for a notification word (instead of jumping straight to quiz)
+  const openFlashcardForWord = useCallback((word: VocabularyWord) => {
+    setActiveFlashcard(word);
   }, []);
 
   // Generates a fresh set of options and distractors for another quiz attempt on the same word
@@ -217,6 +233,65 @@ export function App() {
     setPracticeAllSession(null);
   }, []);
 
+  // ─── Flashcard Handlers ───
+  const handleFlashcardRemember = useCallback(async () => {
+    // Word remembered — check if more in queue, otherwise close
+    const nextItem = dequeuePendingNotification();
+    refreshPendingQueue();
+    setActiveFlashcard(null);
+    if (nextItem) {
+      const found = await getWordById(nextItem.wordId);
+      if (found) {
+        setActiveFlashcard(found);
+      }
+    }
+  }, [refreshPendingQueue]);
+
+  const handleFlashcardNext = useCallback(async () => {
+    // After completing quiz on "Don't Remember" — load next pending word
+    const nextItem = dequeuePendingNotification();
+    refreshPendingQueue();
+    setActiveFlashcard(null);
+    if (nextItem) {
+      const found = await getWordById(nextItem.wordId);
+      if (found) {
+        setActiveFlashcard(found);
+      }
+    }
+  }, [refreshPendingQueue]);
+
+  const handleFlashcardClose = useCallback(() => {
+    setActiveFlashcard(null);
+  }, []);
+
+  // ─── Story Generator Handlers ───
+  const handleCreateStory = useCallback(async () => {
+    if (wordsRef.current.length < 2) {
+      alert('Save at least 2 words to generate a story.');
+      return;
+    }
+    setIsGeneratingStory(true);
+    setStoryError(null);
+    setStoryResult(null);
+
+    const wordPayload = wordsRef.current.map((w) => ({ word: w.word, meaning: w.meaning }));
+    try {
+      const result = await generateStoryFromAI(wordPayload);
+      setStoryResult(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate story. Please try again.';
+      setStoryError(msg);
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  }, []);
+
+  const handleCloseStory = useCallback(() => {
+    setStoryResult(null);
+    setStoryError(null);
+    setIsGeneratingStory(false);
+  }, []);
+
   // ─── Smart Notification Queue Handlers ───
   const handleNextPendingNotification = useCallback(async () => {
     const nextItem = dequeuePendingNotification();
@@ -231,7 +306,7 @@ export function App() {
     setActiveQuizSession(null);
   }, [openQuizForWord, refreshPendingQueue]);
 
-  // Check URL params for ?quiz=<id> (from notifications)
+  // Check URL params for ?quiz=<id> (from notifications) — opens flashcard
   const checkUrlForQuiz = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
     const quizId = params.get('quiz');
@@ -240,11 +315,11 @@ export function App() {
       refreshPendingQueue();
       const found = await getWordById(quizId);
       if (found) {
-        openQuizForWord(found);
+        openFlashcardForWord(found);
       }
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [openQuizForWord, refreshPendingQueue]);
+  }, [openFlashcardForWord, refreshPendingQueue]);
 
   // ─── Initialization ───
   useEffect(() => {
@@ -315,13 +390,13 @@ export function App() {
     // Check notification permission on mount
     checkNotificationPermissionAsync().then(setPermission);
 
-    // Setup native notification click listener
+    // Setup native notification click listener — opens Flashcard, not direct quiz
     setupNotificationListeners(async (wordId) => {
       removePendingNotificationByWordId(wordId);
       refreshPendingQueue();
       const found = await getWordById(wordId);
       if (found) {
-        openQuizForWord(found);
+        openFlashcardForWord(found);
       }
     });
 
@@ -336,13 +411,13 @@ export function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Listen for custom quiz open events
+    // Listen for custom quiz open events — also open flashcard
     const handleOpenQuizEvent = async (e: Event) => {
       const customEvent = e as CustomEvent<{ wordId: string }>;
       if (customEvent.detail?.wordId) {
         const found = await getWordById(customEvent.detail.wordId);
         if (found) {
-          openQuizForWord(found);
+          openFlashcardForWord(found);
         }
       }
     };
@@ -353,7 +428,7 @@ export function App() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('open-vocabulary-quiz', handleOpenQuizEvent);
     };
-  }, [refreshWords, checkUrlForQuiz, openQuizForWord]);
+  }, [refreshWords, checkUrlForQuiz, openFlashcardForWord, openQuizForWord]);
 
   // ─── Mobile Viewport Lock (Prevent window-level scroll offsets on soft keyboard show/hide) ───
   useEffect(() => {
@@ -975,6 +1050,7 @@ export function App() {
                 words={words}
                 onOpenQuiz={(word) => openQuizForWord(word)}
                 onPracticeAll={handleStartPracticeAll}
+                onCreateStory={handleCreateStory}
                 onDeleteWord={handleDeleteWord}
                 onDeleteBatch={handleDeleteBatch}
                 onUpdateWord={handleUpdateWord}
@@ -989,7 +1065,7 @@ export function App() {
 
           {/* ━━━ PANEL 3: SETTINGS ━━━ */}
           <div className="slide-panel">
-            <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-6 sm:pb-8">
+            <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 sm:pb-28">
               <SettingsTab
                 totalWords={words.length}
                 onRefreshWords={refreshWords}
@@ -1054,6 +1130,29 @@ export function App() {
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* Flashcard Notification Overlay */}
+      {activeFlashcard && (
+        <FlashcardScreen
+          word={activeFlashcard}
+          allSavedWords={words}
+          remainingCount={pendingNotificationQueue.length}
+          onRemember={handleFlashcardRemember}
+          onNext={handleFlashcardNext}
+          onClose={handleFlashcardClose}
+        />
+      )}
+
+      {/* AI Story Modal */}
+      {(isGeneratingStory || storyResult !== null || storyError !== null) && (
+        <StoryModal
+          story={storyResult}
+          isGenerating={isGeneratingStory}
+          error={storyError}
+          onRegenerate={handleCreateStory}
+          onClose={handleCloseStory}
         />
       )}
 
