@@ -68,9 +68,9 @@ describe('Voco Offline Core Features Regression Suite', () => {
 
   it('3. Generates fresh offline quiz sessions with distinct local distractors', async () => {
     const w1 = await saveManualWord({ word: 'Acuity', meaning: 'Sharpness or keenness of thought.' });
-    const w2 = await saveManualWord({ word: 'Lucid', meaning: 'Clear and easy to understand.' });
-    const w3 = await saveManualWord({ word: 'Candid', meaning: 'Truthful and straightforward.' });
-    const w4 = await saveManualWord({ word: 'Poised', meaning: 'Composed, dignified, and self-assured.' });
+    await saveManualWord({ word: 'Lucid', meaning: 'Clear and easy to understand.' });
+    await saveManualWord({ word: 'Candid', meaning: 'Truthful and straightforward.' });
+    await saveManualWord({ word: 'Poised', meaning: 'Composed, dignified, and self-assured.' });
 
     const all = await getAllWords();
     expect(all).toHaveLength(4);

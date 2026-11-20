@@ -50,3 +50,4 @@ parse_and_log_response "Simulated Timeout" "$SIM_TIMEOUT"
 echo "=== 5. Simulated 404 Unexpected Error ==="
 SIM_404=$(echo -e '{"error":"Not Found"}\n404\n0.320')
 parse_and_log_response "Simulated 404" "$SIM_404"
+
