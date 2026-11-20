@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Loader2, AlertCircle, RotateCcw, Sparkles, PenTool, Save } from 'lucide-react';
+import type { BackendStatus } from '../types';
 
 interface AddWordFormProps {
   onAddWord: (word: string) => Promise<void>;
@@ -8,6 +9,8 @@ interface AddWordFormProps {
   error: string | null;
   onRetry: () => void;
   lastFailedWord: string | null;
+  backendStatus?: BackendStatus | null;
+  onCheckBackend?: () => void;
 }
 
 export const AddWordForm: React.FC<AddWordFormProps> = ({
@@ -17,6 +20,8 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
   error,
   onRetry,
   lastFailedWord,
+  backendStatus,
+  onCheckBackend,
 }) => {
   const [entryMode, setEntryMode] = useState<'ai' | 'manual'>('ai');
   const [inputWord, setInputWord] = useState('');
@@ -153,6 +158,37 @@ export const AddWordForm: React.FC<AddWordFormProps> = ({
                 )}
               </button>
             </div>
+
+            {/* Subtle Backend Waking / Unavailable Status */}
+            {backendStatus?.state === 'waking' && !error && (
+              <div className="mt-2.5 px-3 py-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/50 rounded-xl flex items-center space-x-2 text-[11px] text-amber-800 dark:text-amber-300">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                <span className="leading-tight">
+                  Backend is waking up... Render cloud service is starting. Words submitted now will process as soon as ready.
+                </span>
+              </div>
+            )}
+
+            {backendStatus?.state === 'unavailable' && !error && (
+              <div className="mt-2.5 px-3 py-2 bg-slate-100 dark:bg-[#1E222D] border border-slate-200 dark:border-[#3E4452] rounded-xl flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="truncate">Backend unavailable. Please try again.</span>
+                </div>
+                {onCheckBackend && (
+                  <button
+                    type="button"
+                    onClick={onCheckBackend}
+                    className="text-[11px] font-semibold text-[#6554F5] dark:text-[#8875F5] hover:underline shrink-0 ml-2"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </form>
       ) : (

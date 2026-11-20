@@ -455,8 +455,8 @@ export function App() {
 
     initializeStorage();
 
-    // Check backend status
-    checkBackendStatus().then(setBackendStatus);
+    // Check backend status with progressive cold-start feedback
+    checkBackendStatus(setBackendStatus);
 
     // Check notification permission on mount
     checkNotificationPermissionAsync().then(setPermission);
@@ -476,9 +476,18 @@ export function App() {
       setIsOnline(true);
       setErrorMessage((prev) => (prev === 'No internet connection. Please check your network.' ? null : prev));
       setRefreshError((prev) => (prev?.message === 'No internet connection. Please check your network.' ? null : prev));
-      checkBackendStatus().then(setBackendStatus);
+      checkBackendStatus(setBackendStatus);
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setBackendStatus({
+        configured: false,
+        model: 'unknown',
+        message: 'No internet connection. Please check your network.',
+        reachable: false,
+        state: 'unavailable',
+      });
+    };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
@@ -920,6 +929,10 @@ export function App() {
     setTheme(next);
   };
 
+  const handleCheckBackendStatus = useCallback(async () => {
+    await checkBackendStatus(setBackendStatus);
+  }, []);
+
   // ─── Swipe Navigation ───
   // Keep active tab index in a ref for touch handlers (avoids stale closures)
   const activeTabIndexRef = useRef<number>(TABS.indexOf('add'));
@@ -1073,6 +1086,7 @@ export function App() {
         savedWordsCount={words.length}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        onCheckBackend={handleCheckBackendStatus}
       />
 
       {/* ── Swipe Viewport Outer Container ── */}
@@ -1107,6 +1121,8 @@ export function App() {
                 error={errorMessage}
                 onRetry={handleRetry}
                 lastFailedWord={lastFailedWord}
+                backendStatus={backendStatus}
+                onCheckBackend={handleCheckBackendStatus}
               />
 
               {/* Practice Reminders */}
@@ -1156,6 +1172,7 @@ export function App() {
                 isPersistent={isPersistent}
                 isOnline={isOnline}
                 backendStatus={backendStatus}
+                onCheckBackend={handleCheckBackendStatus}
                 storageStatus={storageStatus}
                 reminderInterval={reminderInterval}
                 onChangeInterval={handleChangeInterval}

@@ -33,11 +33,14 @@ export interface ActiveQuizSession {
 
 export type WordQuizPayload = Omit<VocabularyWord, 'id' | 'dateAdded' | 'wordLower'>;
 
+export type BackendConnectionState = 'checking' | 'waking' | 'connected' | 'unavailable';
+
 export interface BackendStatus {
   configured: boolean;
   model: string;
   message: string;
   reachable: boolean;
+  state?: BackendConnectionState;
 }
 
 export type SaveStatusState = 'idle' | 'saving' | 'saved' | 'error';

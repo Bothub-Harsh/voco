@@ -15,6 +15,10 @@ import {
   AlertTriangle,
   ShieldCheck,
   HardDrive,
+  Server,
+  RefreshCw,
+  Loader2,
+  WifiOff,
 } from 'lucide-react';
 import type { BackendStatus, StorageStatus } from '../types';
 import type { Theme } from '../services/theme';
@@ -35,6 +39,7 @@ interface SettingsTabProps {
   isPersistent?: boolean;
   isOnline?: boolean;
   backendStatus?: BackendStatus | null;
+  onCheckBackend?: () => void;
   storageStatus?: StorageStatus;
   reminderInterval: number;
   onChangeInterval: (minutes: number) => void;
@@ -55,6 +60,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onStatusChange,
   permission,
   onRequestPermission,
+  isOnline = true,
+  backendStatus,
+  onCheckBackend,
   reminderInterval,
   onChangeInterval,
   remindersActive,
@@ -261,6 +269,77 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </p>
           </div>
         </button>
+      </div>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━ BACKEND & AI CONNECTION CARD ━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1B1D25] border border-slate-300 dark:border-[#3E4452] shadow-card transition-colors">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
+              <Server className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
+                Backend Service
+              </h3>
+              <p className="text-[10px] text-slate-400 dark:text-[#A5A8B5]">
+                voco-backend.onrender.com
+              </p>
+            </div>
+          </div>
+
+          {/* Status Badge */}
+          {!isOnline ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+              <WifiOff className="w-3 h-3 mr-1" />
+              Offline
+            </span>
+          ) : backendStatus?.state === 'checking' ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Checking connection...
+            </span>
+          ) : backendStatus?.state === 'waking' ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+              <span className="relative flex h-2 w-2 mr-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              Backend is waking up...
+            </span>
+          ) : backendStatus?.state === 'unavailable' ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+              <AlertTriangle className="w-3 h-3 mr-1 text-rose-500" />
+              Backend unavailable. Please try again.
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#28C995] border border-emerald-200 dark:border-emerald-800">
+              <CheckCircle2 className="w-3 h-3 mr-1" />
+              Backend connected.
+            </span>
+          )}
+        </div>
+
+        <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] flex items-center justify-between text-[11px]">
+          <div className="text-slate-500 dark:text-[#A5A8B5] truncate text-[10px]">
+            {backendStatus?.model && backendStatus.reachable ? (
+              <span>Model: <code className="font-mono text-slate-700 dark:text-slate-300">{backendStatus.model}</code></span>
+            ) : (
+              <span>Local vocabulary and reminders always available offline.</span>
+            )}
+          </div>
+          {onCheckBackend && (
+            <button
+              type="button"
+              onClick={onCheckBackend}
+              disabled={backendStatus?.state === 'checking'}
+              className="inline-flex items-center text-[10px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline shrink-0 ml-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${backendStatus?.state === 'checking' ? 'animate-spin' : ''}`} />
+              Check Status
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ━━━━━━━━━━━━━━━━━━━━ 2. NOTIFICATIONS & REMINDERS SECTION ━━━━━━━━━━━━━━━━━━━━ */}

@@ -219,47 +219,143 @@ export function validateAiQuizResponse(data: unknown): WordQuizPayload {
 }
 
 /**
- * Checks backend health and Groq API key configuration status.
+ * Checks backend health and Groq API key configuration status with graceful cold-start handling.
+ *
+ * Cold-start handling strategy for Render free-tier:
+ * 1. Immediate offline check: Returns unavailable if navigator.onLine is false.
+ * 2. Progressive state updates: Emits 'checking' -> 'waking' (if cold start detected) -> 'connected'/'unavailable'.
+ * 3. Attempt 1 uses a fast 12s timeout. If warm, it returns in ~200-500ms.
+ * 4. If Attempt 1 times out or receives 502/503/504 gateway statuses (indicating a sleeping container),
+ *    the app transitions to 'waking' ("Backend is waking up...") instead of showing a false error.
+ * 5. Attempt 2 uses a longer 40s timeout after a 3s delay to give Render time to spin up.
+ * 6. Attempt 3 (final attempt) uses a 25s timeout.
+ * 7. Exits immediately on success or permanent client error (4xx); limits total retries to 3;
+ *    never enters an infinite loop; completely non-blocking for local features.
  */
-export async function checkBackendStatus(): Promise<BackendStatus> {
-  const base = getApiBaseUrl();
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-    const res = await fetch(`${base}/api/status`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      return {
-        configured: false,
-        model: 'unknown',
-        message: `Vocabulary server returned HTTP ${res.status}.`,
-        reachable: false,
-      };
-    }
-
-    const data = await res.json();
-    return {
-      configured: Boolean(data?.configured),
-      model: data?.model || 'unknown',
-      message: data?.message || (data?.configured ? 'Groq AI connected.' : 'API key not configured on backend.'),
-      reachable: true,
-    };
-  } catch (err: unknown) {
-    const isAbort = err && typeof err === 'object' && 'name' in err && err.name === 'AbortError';
-    return {
+export async function checkBackendStatus(
+  onStateChange?: (status: BackendStatus) => void
+): Promise<BackendStatus> {
+  // Check if browser/device is offline
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const offlineStatus: BackendStatus = {
       configured: false,
       model: 'unknown',
-      message: isAbort
-        ? 'Backend service is starting up. Please allow a few seconds.'
-        : 'No internet connection. Please check your network.',
+      message: 'No internet connection. Please check your network.',
       reachable: false,
+      state: 'unavailable',
     };
+    onStateChange?.(offlineStatus);
+    return offlineStatus;
   }
+
+  // Initial checking state
+  const checkingStatus: BackendStatus = {
+    configured: false,
+    model: 'unknown',
+    message: 'Checking connection...',
+    reachable: false,
+    state: 'checking',
+  };
+  onStateChange?.(checkingStatus);
+
+  const base = getApiBaseUrl();
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Attempt 1: 12s timeout (fast check for warm server).
+    // Attempt 2: 40s timeout (allows container cold start to complete).
+    // Attempt 3: 25s timeout (final grace attempt).
+    const timeoutMs = attempt === 1 ? 12000 : attempt === 2 ? 40000 : 25000;
+
+    if (attempt > 1) {
+      // Notify caller that backend is waking up
+      const wakingStatus: BackendStatus = {
+        configured: false,
+        model: 'unknown',
+        message: 'Backend is waking up...',
+        reachable: false,
+        state: 'waking',
+      };
+      onStateChange?.(wakingStatus);
+
+      // Sensible pause between attempts to allow boot
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${base}/api/status`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      // Render returns 502/503/504 while reverse proxy waits for container to start
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        if (attempt < maxAttempts) {
+          continue;
+        }
+      }
+
+      if (!res.ok) {
+        // Client errors (4xx) mean server is reached but route is invalid
+        const unavailableStatus: BackendStatus = {
+          configured: false,
+          model: 'unknown',
+          message: 'Backend unavailable. Please try again.',
+          reachable: false,
+          state: 'unavailable',
+        };
+        onStateChange?.(unavailableStatus);
+        return unavailableStatus;
+      }
+
+      const data = await res.json();
+      const isConfigured = Boolean(data?.configured);
+      const connectedStatus: BackendStatus = {
+        configured: isConfigured,
+        model: data?.model || 'unknown',
+        message: 'Backend connected.',
+        reachable: true,
+        state: 'connected',
+      };
+      onStateChange?.(connectedStatus);
+      return connectedStatus;
+    } catch {
+      clearTimeout(timeoutId);
+
+      // If device went offline during the check
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const offlineStatus: BackendStatus = {
+          configured: false,
+          model: 'unknown',
+          message: 'No internet connection. Please check your network.',
+          reachable: false,
+          state: 'unavailable',
+        };
+        onStateChange?.(offlineStatus);
+        return offlineStatus;
+      }
+
+      // If timeout or network failure, continue to next attempt if available
+      if (attempt < maxAttempts) {
+        continue;
+      }
+    }
+  }
+
+  // All retries exhausted
+  const finalUnavailable: BackendStatus = {
+    configured: false,
+    model: 'unknown',
+    message: 'Backend unavailable. Please try again.',
+    reachable: false,
+    state: 'unavailable',
+  };
+  onStateChange?.(finalUnavailable);
+  return finalUnavailable;
 }
 
 /**
