@@ -57,7 +57,7 @@ import { BottomNav, type TabId } from './components/BottomNav';
 import { SettingsTab } from './components/SettingsTab';
 import { FlashcardScreen } from './components/FlashcardScreen';
 import { StoryModal, type StoryResult } from './components/StoryModal';
-import { initTheme, toggleTheme, type Theme } from './services/theme';
+import { initTheme, toggleTheme, setTheme as setGlobalTheme, type ThemeId } from './services/theme';
 import { CheckCircle2 } from 'lucide-react';
 
 const TABS: TabId[] = ['add', 'saved', 'settings'];
@@ -71,7 +71,7 @@ const SWIPE_MAX_MS = 700;
 
 export function App() {
   // ─── UI State ───
-  const [theme, setTheme] = useState<Theme>(() => initTheme());
+  const [theme, setTheme] = useState<ThemeId>(() => initTheme());
   const [activeTab, setActiveTab] = useState<TabId>('add');
   const [successMessage, setSuccessMessage] = useState<boolean>(false);
 
@@ -929,6 +929,11 @@ export function App() {
     setTheme(next);
   };
 
+  const handleSelectTheme = useCallback((themeId: ThemeId) => {
+    setGlobalTheme(themeId);
+    setTheme(themeId);
+  }, []);
+
   const handleCheckBackendStatus = useCallback(async () => {
     await checkBackendStatus(setBackendStatus);
   }, []);
@@ -1180,6 +1185,7 @@ export function App() {
                 onStartReminders={handleStartReminders}
                 onStopReminders={handleStopReminders}
                 theme={theme}
+                onSelectTheme={handleSelectTheme}
                 onToggleTheme={handleToggleTheme}
               />
             </div>

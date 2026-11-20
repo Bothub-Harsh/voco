@@ -7,8 +7,7 @@ import {
   Database,
   ChevronDown,
   ChevronUp,
-  Sun,
-  Moon,
+  Palette,
   Play,
   Square,
   CheckCircle2,
@@ -21,7 +20,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import type { BackendStatus, StorageStatus } from '../types';
-import type { Theme } from '../services/theme';
+import { type ThemeId, THEME_LIST, getThemeDefinition } from '../services/theme';
 import { BackupControls } from './BackupControls';
 import {
   isNativeApp,
@@ -46,8 +45,9 @@ interface SettingsTabProps {
   remindersActive: boolean;
   onStartReminders: () => Promise<void>;
   onStopReminders: () => void;
-  theme: Theme;
-  onToggleTheme: () => void;
+  theme: ThemeId;
+  onSelectTheme: (themeId: ThemeId) => void;
+  onToggleTheme?: () => void;
 }
 
 const PRESET_INTERVALS = [1, 2, 3, 5, 10, 15, 30];
@@ -69,12 +69,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onStartReminders,
   onStopReminders,
   theme,
-  onToggleTheme,
+  onSelectTheme,
 }) => {
   const native = isNativeApp();
   const [exactAlarmStatus, setExactAlarmStatus] = useState<'granted' | 'prompt' | 'unsupported'>('prompt');
   const [showLearnMoreBg, setShowLearnMoreBg] = useState(false);
   const [activeSection, setActiveSection] = useState<ActiveSection>('reminders');
+  const currentTheme = getThemeDefinition(theme);
 
   useEffect(() => {
     let isMounted = true;
@@ -241,7 +242,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </button>
 
-        {/* Tile 4: Appearance */}
+        {/* Tile 4: App Themes */}
         <button
           type="button"
           onClick={() => setActiveSection('appearance')}
@@ -250,22 +251,40 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               ? 'border-[#6554F5] dark:border-[#8875F5] ring-2 ring-[#6554F5]/30 bg-purple-50/40 dark:bg-[#252834]'
               : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
           }`}
+          style={
+            activeSection === 'appearance' || activeSection === 'all'
+              ? { borderColor: 'var(--voco-accent)' }
+              : undefined
+          }
         >
           <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
-              {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-500" />}
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+              }}
+            >
+              <Palette className="w-4 h-4" />
             </div>
             {/* Visual status indicator */}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 dark:bg-[#15171E] text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800/80">
-              {theme === 'dark' ? 'Dark' : 'Light'}
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors truncate max-w-[100px]"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+                borderColor: 'var(--voco-accent-border)',
+              }}
+            >
+              {currentTheme.name}
             </span>
           </div>
           <div>
             <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
-              Appearance
+              App Themes
             </h3>
             <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
-              {theme === 'dark' ? 'OLED Dark' : 'Clean Light'}
+              8 instant themes
             </p>
           </div>
         </button>
@@ -697,90 +716,117 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </section>
       )}
 
-      {/* ━━━━━━━━━━━━━━━━━━━━ 5. APPEARANCE SECTION ━━━━━━━━━━━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━━━━━━━━━━━ 5. APP THEMES SECTION ━━━━━━━━━━━━━━━━━━━━ */}
       {(activeSection === 'appearance' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
+        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-4 animate-fade-in-up">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
             <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
-                {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-500" />}
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+                style={{
+                  backgroundColor: 'var(--voco-accent-soft)',
+                  color: 'var(--voco-accent)',
+                }}
+              >
+                <Palette className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                  Appearance
+                  App Themes
                 </h3>
                 <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                  Select your preferred interface theme
+                  Select from 8 crafted themes • Updates instantly
                 </p>
               </div>
             </div>
 
-            <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">
-              {theme === 'dark' ? 'OLED Dark' : 'Light Mode'}
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-2xs"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+                borderColor: 'var(--voco-accent-border)',
+              }}
+            >
+              {currentTheme.name}
             </span>
           </div>
 
-          {/* Visual Light / Dark Segmented Selector */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            {/* Light Mode Selector Card */}
-            <button
-              type="button"
-              onClick={() => {
-                if (theme !== 'light') onToggleTheme();
-              }}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
-                theme === 'light'
-                  ? 'border-[#6554F5] ring-2 ring-[#6554F5]/30 bg-indigo-50/50 shadow-xs'
-                  : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] hover:border-slate-400 dark:hover:border-[#4F5568]'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-200">
-                  <Sun className="w-4 h-4" />
-                </div>
-                {theme === 'light' && (
-                  <CheckCircle2 className="w-4 h-4 text-[#6554F5]" />
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5]">
-                  Light Mode
-                </p>
-                <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
-                  Crisp daylight contrast
-                </p>
-              </div>
-            </button>
+          {/* 8 Themes Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {THEME_LIST.map((t) => {
+              const isSelected = t.id === theme;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelectTheme(t.id)}
+                  aria-pressed={isSelected}
+                  className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${
+                    isSelected
+                      ? 'shadow-md ring-2'
+                      : 'hover:border-slate-400 dark:hover:border-zinc-500 hover:shadow-xs'
+                  }`}
+                  style={{
+                    backgroundColor: t.colors.bgCard,
+                    borderColor: isSelected ? t.colors.accent : t.colors.border,
+                    boxShadow: isSelected ? `0 0 0 2px ${t.colors.accent}40` : undefined,
+                  }}
+                >
+                  {/* Top row: Swatches & Active Checkmark */}
+                  <div className="flex items-center justify-between mb-2.5">
+                    {/* 4-color palette swatch preview */}
+                    <div className="flex items-center space-x-1.5 p-1 rounded-lg bg-slate-100/80 dark:bg-black/30 border border-slate-200/60 dark:border-white/10">
+                      {t.previewColors.map((hex, idx) => (
+                        <span
+                          key={idx}
+                          className="w-4 h-4 rounded-full border border-black/10 dark:border-white/20 shadow-2xs shrink-0"
+                          style={{ backgroundColor: hex }}
+                          title={idx === 0 ? 'Background' : idx === 1 ? 'Card' : idx === 2 ? 'Accent' : 'Text'}
+                        />
+                      ))}
+                    </div>
 
-            {/* Dark Mode Selector Card */}
-            <button
-              type="button"
-              onClick={() => {
-                if (theme !== 'dark') onToggleTheme();
-              }}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
-                theme === 'dark'
-                  ? 'border-[#8875F5] ring-2 ring-[#8875F5]/30 bg-[#6554F5]/15 shadow-xs'
-                  : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#15171E] hover:border-slate-400 dark:hover:border-[#4F5568]'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 rounded-xl bg-[#222530] text-[#8875F5] flex items-center justify-center border border-[#3E4452]">
-                  <Moon className="w-4 h-4" />
-                </div>
-                {theme === 'dark' && (
-                  <CheckCircle2 className="w-4 h-4 text-[#8875F5]" />
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5]">
-                  OLED Dark
-                </p>
-                <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5">
-                  Comfortable soft charcoal
-                </p>
-              </div>
-            </button>
+                    {/* Active Checkmark or Theme Mode Pill */}
+                    {isSelected ? (
+                      <span
+                        className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
+                        style={{ backgroundColor: t.colors.accent }}
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-white" />
+                        <span>Active</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-full border opacity-70 group-hover:opacity-100 transition-opacity"
+                        style={{
+                          color: t.colors.textMuted,
+                          borderColor: t.colors.borderSubtle,
+                        }}
+                      >
+                        {t.isDark ? 'Dark' : 'Light'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bottom row: Name & Subtitle */}
+                  <div>
+                    <h4
+                      className="text-xs font-bold leading-tight flex items-center justify-between"
+                      style={{ color: t.colors.textPrimary }}
+                    >
+                      <span>{t.name}</span>
+                    </h4>
+                    <p
+                      className="text-[10px] mt-0.5 line-clamp-1 leading-snug"
+                      style={{ color: t.colors.textMuted }}
+                    >
+                      {t.subtitle}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

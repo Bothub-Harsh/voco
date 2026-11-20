@@ -10,6 +10,21 @@
   --sar: env(safe-area-inset-right, 0px);
   --header-content-h: 56px;
   --header-total-h: calc(var(--header-content-h) + var(--sat));
+
+  /* Default theme CSS variables (Clean Light fallback) */
+  --voco-bg-page: #F8FAFC;
+  --voco-bg-card: #FFFFFF;
+  --voco-bg-surface: #F1F5F9;
+  --voco-bg-surface-hover: #E2E8F0;
+  --voco-border: #CBD5E1;
+  --voco-border-subtle: #E2E8F0;
+  --voco-text-primary: #0F172A;
+  --voco-text-secondary: #334155;
+  --voco-text-muted: #64748B;
+  --voco-accent: #6554F5;
+  --voco-accent-hover: #5243E4;
+  --voco-accent-soft: #EEF2FF;
+  --voco-accent-border: #C7D2FE;
 }
 
 @layer base {
@@ -30,10 +45,10 @@
     -webkit-tap-highlight-color: transparent;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background-color: #F8FAFC;
-    color: #0F172A;
+    background-color: var(--voco-bg-page, #F8FAFC);
+    color: var(--voco-text-primary, #0F172A);
     letter-spacing: -0.011em;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   #root {
@@ -46,15 +61,16 @@
     height: 100%;
     height: 100dvh;
     overflow: hidden;
+    background-color: var(--voco-bg-page, #F8FAFC);
   }
 
-  /* Soft Charcoal Dark Mode */
+  /* Dark mode root defaults */
   html.dark,
   html.dark body,
   html.dark #root {
     color-scheme: dark;
-    background-color: #121318;
-    color: #F1F1F5;
+    background-color: var(--voco-bg-page, #121318);
+    color: var(--voco-text-primary, #F1F1F5);
   }
 
   /* Refined scrollbar */
@@ -78,6 +94,130 @@
   html.dark ::-webkit-scrollbar-thumb:hover {
     background: #424958;
   }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   VOCO DYNAMIC 8-THEME SYSTEM SCOPED STYLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+/* 1. Header & Navigation Bars */
+[data-theme] header {
+  background-color: var(--voco-bg-card) !important;
+  border-color: var(--voco-border) !important;
+}
+
+[data-theme] nav {
+  background-color: var(--voco-bg-card) !important;
+  border-color: var(--voco-border) !important;
+}
+
+/* 2. Card Backgrounds across all components */
+[data-theme] .bg-white,
+[data-theme] .bg-white\/95,
+[data-theme].dark .dark\:bg-\[\#1B1D25\],
+[data-theme].dark .dark\:bg-\[\#1B1D25\]\/95,
+[data-theme] .shadow-card,
+[data-theme] .shadow-2xl > div {
+  background-color: var(--voco-bg-card);
+}
+
+/* 3. Secondary Surfaces, Inputs, Textareas, Sub-panels */
+[data-theme] .bg-slate-50,
+[data-theme] .bg-slate-100,
+[data-theme].dark .dark\:bg-\[\#15171E\],
+[data-theme].dark .dark\:bg-\[\#222530\],
+[data-theme].dark .dark\:bg-\[\#191C23\],
+[data-theme] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme] textarea {
+  background-color: var(--voco-bg-surface);
+  color: var(--voco-text-primary);
+}
+
+[data-theme] input:focus,
+[data-theme] textarea:focus {
+  border-color: var(--voco-accent) !important;
+  outline: none;
+}
+
+/* 4. Borders & Dividers */
+[data-theme] .border-slate-200,
+[data-theme] .border-slate-250,
+[data-theme] .border-slate-300,
+[data-theme].dark .dark\:border-\[\#3E4452\],
+[data-theme].dark .dark\:border-\[\#2E3341\],
+[data-theme].dark .dark\:border-\[\#303541\] {
+  border-color: var(--voco-border);
+}
+
+/* 5. Primary Typography */
+[data-theme] .text-slate-900,
+[data-theme] .text-slate-800,
+[data-theme] .text-slate-700,
+[data-theme].dark .dark\:text-\[\#F1F1F5\],
+[data-theme].dark .dark\:text-zinc-100,
+[data-theme].dark .dark\:text-zinc-200,
+[data-theme].dark .dark\:text-white {
+  color: var(--voco-text-primary);
+}
+
+/* 6. Secondary / Muted Typography */
+[data-theme] .text-slate-500,
+[data-theme] .text-slate-600,
+[data-theme].dark .dark\:text-\[\#A5A8B5\],
+[data-theme].dark .dark\:text-\[\#8B8E9C\],
+[data-theme].dark .dark\:text-\[\#6B6E80\],
+[data-theme].dark .dark\:text-zinc-400,
+[data-theme].dark .dark\:text-zinc-500 {
+  color: var(--voco-text-muted);
+}
+
+/* 7. Brand Primary Buttons */
+[data-theme] .bg-\[\#6554F5\],
+[data-theme] .bg-indigo-600 {
+  background-color: var(--voco-accent) !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme] .hover\:bg-\[\#5243E4\]:hover,
+[data-theme] .hover\:bg-indigo-700:hover {
+  background-color: var(--voco-accent-hover) !important;
+}
+
+[data-theme] .active\:bg-\[\#4334D0\]:active {
+  background-color: var(--voco-accent-hover) !important;
+}
+
+/* 8. Brand Accent Text & Highlights */
+[data-theme] .text-\[\#6554F5\],
+[data-theme] .text-\[\#8875F5\],
+[data-theme] .text-indigo-600,
+[data-theme].dark .dark\:text-\[\#8875F5\],
+[data-theme].dark .dark\:text-\[\#9F91FF\],
+[data-theme].dark .dark\:text-\[\#8172F8\] {
+  color: var(--voco-accent);
+}
+
+/* 9. Brand Accent Borders & Rings */
+[data-theme] .border-\[\#6554F5\],
+[data-theme].dark .dark\:border-\[\#8875F5\],
+[data-theme].dark .dark\:border-\[\#6554F5\]\/40 {
+  border-color: var(--voco-accent) !important;
+}
+
+[data-theme] .ring-\[\#6554F5\]\/30 {
+  --tw-ring-color: var(--voco-accent-border) !important;
+}
+
+/* 10. Soft Accent Backgrounds (Pills, active states, active tab backgrounds) */
+[data-theme] .bg-indigo-50,
+[data-theme] .bg-indigo-50\/50,
+[data-theme] .bg-indigo-50\/70,
+[data-theme] .bg-indigo-50\/80,
+[data-theme].dark .dark\:bg-\[\#6554F5\]\/15,
+[data-theme].dark .dark\:bg-\[\#6554F5\]\/20,
+[data-theme].dark .dark\:bg-\[\#8875F5\]\/15,
+[data-theme].dark .dark\:bg-\[\#252834\] {
+  background-color: var(--voco-accent-soft);
 }
 
 /* Safe-area utility classes */
@@ -137,7 +277,6 @@
   width: 300%;
   height: 100%;
   will-change: transform;
-  /* transition applied inline via JS for swipe dragging; CSS transition for snap */
   transition: transform 0s;
 }
 
@@ -149,18 +288,16 @@
   width: calc(100% / 3);
   height: 100%;
   flex-shrink: 0;
-  /* Panels scroll vertically with their own independent scroll boundary */
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   position: relative;
-  /* Inherit app background so no black bleed on Android WebView */
-  background-color: #F8FAFC;
+  background-color: var(--voco-bg-page, #F8FAFC);
 }
 
 html.dark .slide-panel {
-  background-color: #121318;
+  background-color: var(--voco-bg-page, #121318);
 }
 
 /* Dark mode scrollbar refinement */

@@ -1,7 +1,7 @@
 import React from 'react';
-import { BookOpen, Wifi, WifiOff, KeyRound, Moon, Sun, Loader2, AlertCircle } from 'lucide-react';
+import { BookOpen, Wifi, WifiOff, KeyRound, Palette, Loader2, AlertCircle } from 'lucide-react';
 import type { BackendStatus } from '../types';
-import type { Theme } from '../services/theme';
+import { getThemeDefinition, type Theme } from '../services/theme';
 
 interface HeaderProps {
   isOnline: boolean;
@@ -20,12 +20,17 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   onCheckBackend,
 }) => {
+  const currentTheme = getThemeDefinition(theme);
+
   return (
     <header className="sticky top-0 z-40 w-full shrink-0 bg-white dark:bg-[#1B1D25]/95 border-b border-slate-200 dark:border-[#3E4452] shadow-xs safe-top transition-colors backdrop-blur-md">
       <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
         {/* Left: Logo + Title */}
         <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-[#6554F5] flex items-center justify-center text-white shadow-md shadow-indigo-200/40 dark:shadow-none shrink-0">
+          <div
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-colors"
+            style={{ backgroundColor: 'var(--voco-accent)' }}
+          >
             <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
           </div>
           <div className="min-w-0">
@@ -40,19 +45,15 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Actions & Status indicators */}
         <div className="flex items-center space-x-2 shrink-0">
-          {/* Black Dark Mode Toggle Button */}
+          {/* Instant Theme Switcher Button */}
           <button
             type="button"
             onClick={onToggleTheme}
-            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-[#A5A8B5] dark:hover:text-amber-400 bg-slate-100 hover:bg-slate-200 dark:bg-[#222530] dark:hover:bg-[#2A2E3C] border border-slate-300 dark:border-[#3E4452] transition-all focus:outline-none focus:ring-2 focus:ring-[#8875F5]/40 shadow-xs"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            aria-label="Toggle dark mode"
+            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-[#A5A8B5] bg-slate-100 hover:bg-slate-200 dark:bg-[#222530] dark:hover:bg-[#2A2E3C] border border-slate-300 dark:border-[#3E4452] transition-all focus:outline-none focus:ring-2 focus:ring-[#8875F5]/40 shadow-xs flex items-center justify-center group"
+            title={`Current theme: ${currentTheme.name}. Tap to cycle theme`}
+            aria-label={`Current theme: ${currentTheme.name}. Tap to cycle theme`}
           >
-            {theme === 'dark' ? (
-              <Sun className="w-4 h-4 text-amber-400" />
-            ) : (
-              <Moon className="w-4 h-4 text-slate-600" />
-            )}
+            <Palette className="w-4 h-4 transition-transform group-hover:rotate-12" style={{ color: 'var(--voco-accent)' }} />
           </button>
 
           {/* Backend Status Pill */}
