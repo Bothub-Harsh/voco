@@ -197,4 +197,89 @@ describe('Frontend Backend Status Handling — All 6 Core Scenarios', () => {
     const stateNames = states.map((s) => s.state);
     expect(stateNames).toEqual(['checking', 'waking', 'connected']);
   });
+
+  // Situation 7: Backend returns detailed health telemetry
+  it('Situation 7: Backend returns detailed health telemetry (uptime, timestamps, response time)', async () => {
+    const fakeStartTime = '2026-11-21T07:00:00.000Z';
+    const fakeServerTime = '2026-11-21T13:00:00.000Z';
+    const fakePingTime = '2026-11-21T12:50:00.000Z';
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ok',
+        service: 'my-vocabulary-backend',
+        startTime: fakeStartTime,
+        uptimeSeconds: 21600,
+        serverTime: fakeServerTime,
+        configured: true,
+        model: 'openai/gpt-oss-120b',
+        lastSelfPingAt: fakePingTime,
+      }),
+    });
+
+    const result = await checkBackendStatus();
+
+    expect(result.reachable).toBe(true);
+    expect(result.state).toBe('connected');
+    expect(result.configured).toBe(true);
+    expect(result.model).toBe('openai/gpt-oss-120b');
+    expect(result.serverStartTime).toBe(fakeStartTime);
+    expect(result.serverTime).toBe(fakeServerTime);
+    expect(result.uptimeSeconds).toBe(21600);
+    expect(result.lastPingAt).toBe(fakePingTime);
+    expect(typeof result.responseTimeMs).toBe('number');
+    expect(typeof result.lastCheckedAt).toBe('number');
+  });
+
+  // Situation 8: Groq is unconfigured on the server
+  it('Situation 8: Groq API key unconfigured returns ai_problem state', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ok',
+        configured: false,
+        model: 'openai/gpt-oss-120b',
+        message: 'GROQ_API_KEY not configured.',
+      }),
+    });
+
+    const result = await checkBackendStatus();
+
+    expect(result.reachable).toBe(true);
+    expect(result.state).toBe('ai_problem');
+    expect(result.configured).toBe(false);
+    expect(result.message).toContain('Groq API key is not configured');
+  });
+
+  // Situation 9: Concurrent status checks are properly deduplicated
+  it('Situation 9: Deduplicates concurrent status checks to avoid duplicate requests', async () => {
+    let callCount = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callCount++;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: 'ok',
+          configured: true,
+          model: 'openai/gpt-oss-120b',
+        }),
+      };
+    });
+
+    // Fire 3 calls concurrently
+    const [res1, res2, res3] = await Promise.all([
+      checkBackendStatus(),
+      checkBackendStatus(),
+      checkBackendStatus(),
+    ]);
+
+    expect(callCount).toBe(1);
+    expect(res1.reachable).toBe(true);
+    expect(res2.reachable).toBe(true);
+    expect(res3.reachable).toBe(true);
+  });
 });

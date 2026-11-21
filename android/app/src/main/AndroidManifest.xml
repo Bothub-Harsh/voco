@@ -35,7 +35,7 @@
             android:excludeFromRecents="true"
             android:noHistory="false"
             android:autoRemoveFromRecents="true"
-            android:exported="false"
+            android:exported="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:windowSoftInputMode="stateHidden" />
 
@@ -52,21 +52,26 @@
         <!-- Native Voco Background Reminder Alarm Receiver -->
         <receiver
             android:name=".VocoAlarmReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.harsh.voco.PRACTICE_REMINDER" />
                 <action android:name="com.harsh.voco.NOTIFICATION_DISMISSED" />
+                <action android:name="com.harsh.voco.SCHEDULE_START" />
+                <action android:name="com.harsh.voco.SCHEDULE_END" />
             </intent-filter>
         </receiver>
 
-        <!-- Native Voco Reboot Receiver to restore scheduled reminders -->
+        <!-- Native Voco Reboot & Time Change Receiver to restore scheduled reminders and daily schedule -->
         <receiver
             android:name=".VocoBootReceiver"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

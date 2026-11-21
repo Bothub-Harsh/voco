@@ -76,27 +76,12 @@ public class VocoNotificationPlugin extends Plugin {
         String wordsJson = call.getString("words", "[]");
 
         Context ctx = getContext();
-        VocoAlarmScheduler.createNotificationChannel(ctx);
 
-        // Cancel any prior alarms to avoid any overlapping triggers
-        VocoAlarmScheduler.cancelAlarms(ctx);
+        // Clear manual pause state if user explicitly taps Start
+        VocoAlarmScheduler.getPrefs(ctx).edit().remove(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE).apply();
 
-        // Generate a new unique generation session token
-        long generation = System.currentTimeMillis();
-
-        SharedPreferences.Editor editor = VocoAlarmScheduler.getPrefs(ctx).edit();
-        editor.putBoolean(VocoAlarmScheduler.KEY_ENABLED, true);
-        editor.putInt(VocoAlarmScheduler.KEY_INTERVAL, intervalMins);
-        editor.putString(VocoAlarmScheduler.KEY_WORDS, wordsJson);
-        editor.putLong(VocoAlarmScheduler.KEY_SCHEDULE_GENERATION, generation);
-        editor.apply();
-
-        long nowElapsed = SystemClock.elapsedRealtime();
-        long intervalMs = intervalMins * 60 * 1000L;
-        long targetElapsed = nowElapsed + intervalMs;
-        long wallClockTarget = System.currentTimeMillis() + intervalMs;
-
-        VocoAlarmScheduler.scheduleNextAlarm(ctx, targetElapsed, intervalMins, generation);
+        long generation = VocoAlarmScheduler.startReminderChain(ctx, intervalMins, wordsJson);
+        long wallClockTarget = System.currentTimeMillis() + (intervalMins * 60 * 1000L);
 
         JSObject ret = new JSObject();
         ret.put("success", true);
@@ -109,7 +94,122 @@ public class VocoNotificationPlugin extends Plugin {
     @PluginMethod
     public void stopReminders(PluginCall call) {
         Context ctx = getContext();
+        SharedPreferences prefs = VocoAlarmScheduler.getPrefs(ctx);
+
+        boolean scheduleEnabled = prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, false);
+        if (scheduleEnabled) {
+            String startTimeStr = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_START_TIME, "08:00");
+            String endTimeStr = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_END_TIME, "21:00");
+            String daysJson = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
+
+            int[] startParts = VocoAlarmScheduler.parseHourMinute(startTimeStr, 8, 0);
+            int[] endParts = VocoAlarmScheduler.parseHourMinute(endTimeStr, 21, 0);
+            java.util.Set<Integer> allowedDays = VocoAlarmScheduler.parseDaysSet(daysJson);
+
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            boolean isInside = VocoAlarmScheduler.isInsideScheduleWindow(cal, startParts[0], startParts[1], endParts[0], endParts[1], allowedDays);
+
+            if (isInside) {
+                // Stopped during active window: pause reminders for the rest of today only
+                String todayDateStr = VocoAlarmScheduler.getTodayDateString();
+                prefs.edit().putString(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE, todayDateStr).apply();
+                Log.d(TAG, "Manual stop during schedule window: Paused for today (" + todayDateStr + ")");
+            }
+        }
+
         VocoAlarmScheduler.cancelAlarms(ctx);
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    // ─────────────────────────────────────────────
+    // Daily Schedule Methods
+    // ─────────────────────────────────────────────
+
+    @PluginMethod
+    public void saveDailySchedule(PluginCall call) {
+        Boolean enabledObj = call.getBoolean("enabled");
+        boolean enabled = enabledObj != null ? enabledObj : false;
+        String startTime = call.getString("startTime", "08:00");
+        String endTime = call.getString("endTime", "21:00");
+        String daysJson = call.getString("days", "[1,2,3,4,5,6,7]");
+        Boolean notifyObj = call.getBoolean("notifyOnStartEnd");
+        boolean notify = notifyObj != null ? notifyObj : true;
+
+        Context ctx = getContext();
+        SharedPreferences.Editor editor = VocoAlarmScheduler.getPrefs(ctx).edit();
+        editor.putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, enabled);
+        editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_START_TIME, startTime);
+        editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_END_TIME, endTime);
+        editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_DAYS, daysJson);
+        editor.putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_NOTIFY, notify);
+        editor.apply();
+
+        if (enabled) {
+            VocoAlarmScheduler.setupDailySchedule(ctx);
+        } else {
+            VocoAlarmScheduler.cancelDailySchedule(ctx);
+        }
+
+        int[] startParts = VocoAlarmScheduler.parseHourMinute(startTime, 8, 0);
+        int[] endParts = VocoAlarmScheduler.parseHourMinute(endTime, 21, 0);
+        java.util.Set<Integer> allowedDays = VocoAlarmScheduler.parseDaysSet(daysJson);
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        boolean isInside = VocoAlarmScheduler.isInsideScheduleWindow(cal, startParts[0], startParts[1], endParts[0], endParts[1], allowedDays);
+        String todayDateStr = VocoAlarmScheduler.getTodayDateString();
+        String pausedDate = VocoAlarmScheduler.getPrefs(ctx).getString(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE, null);
+
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        ret.put("enabled", enabled);
+        ret.put("isInsideWindow", isInside);
+        ret.put("isPausedToday", todayDateStr.equals(pausedDate));
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getDailySchedule(PluginCall call) {
+        Context ctx = getContext();
+        SharedPreferences prefs = VocoAlarmScheduler.getPrefs(ctx);
+
+        boolean enabled = prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, false);
+        String startTime = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_START_TIME, "08:00");
+        String endTime = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_END_TIME, "21:00");
+        String daysJson = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
+        boolean notify = prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_NOTIFY, true);
+        String pausedDate = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE, null);
+        String todayDateStr = VocoAlarmScheduler.getTodayDateString();
+
+        int[] startParts = VocoAlarmScheduler.parseHourMinute(startTime, 8, 0);
+        int[] endParts = VocoAlarmScheduler.parseHourMinute(endTime, 21, 0);
+        java.util.Set<Integer> allowedDays = VocoAlarmScheduler.parseDaysSet(daysJson);
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        boolean isInside = VocoAlarmScheduler.isInsideScheduleWindow(cal, startParts[0], startParts[1], endParts[0], endParts[1], allowedDays);
+        boolean isPausedToday = todayDateStr.equals(pausedDate);
+        boolean remindersRunning = prefs.getBoolean(VocoAlarmScheduler.KEY_ENABLED, false);
+
+        JSObject ret = new JSObject();
+        ret.put("enabled", enabled);
+        ret.put("startTime", startTime);
+        ret.put("endTime", endTime);
+        ret.put("days", daysJson);
+        ret.put("notifyOnStartEnd", notify);
+        ret.put("isInsideWindow", isInside);
+        ret.put("isPausedToday", isPausedToday);
+        ret.put("remindersRunning", remindersRunning);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void cancelDailySchedule(PluginCall call) {
+        Context ctx = getContext();
+        VocoAlarmScheduler.getPrefs(ctx).edit()
+            .putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, false)
+            .remove(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE)
+            .apply();
+        VocoAlarmScheduler.cancelDailySchedule(ctx);
+
         JSObject ret = new JSObject();
         ret.put("success", true);
         call.resolve(ret);
@@ -124,6 +224,26 @@ public class VocoNotificationPlugin extends Plugin {
             .apply();
         JSObject ret = new JSObject();
         ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void saveTheme(PluginCall call) {
+        String themeId = call.getString("themeId", "clean-light");
+        Context ctx = getContext();
+        VocoAlarmScheduler.setSelectedTheme(ctx, themeId);
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        ret.put("themeId", themeId);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getSavedTheme(PluginCall call) {
+        Context ctx = getContext();
+        String themeId = VocoAlarmScheduler.getSelectedTheme(ctx);
+        JSObject ret = new JSObject();
+        ret.put("themeId", themeId);
         call.resolve(ret);
     }
 

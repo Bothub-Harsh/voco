@@ -253,4 +253,18 @@ describe('Voco 8 Theme Customization System', () => {
       expect(def.id).toBe('clean-light');
     });
   });
+
+  describe('5. Native Theme Storage Synchronization', () => {
+    it('safely handles syncThemeToNative in non-native / browser environments without crashing', async () => {
+      const { syncThemeToNative, getNativeTheme } = await import('../src/services/notifications');
+      await expect(syncThemeToNative('rose')).resolves.not.toThrow();
+      const theme = await getNativeTheme();
+      expect(theme).toBeNull(); // On web/node it returns null
+    });
+
+    it('applyTheme triggers syncThemeToNative gracefully', () => {
+      expect(() => applyTheme('amoled')).not.toThrow();
+      expect(attributes.get('data-theme')).toBe('amoled');
+    });
+  });
 });

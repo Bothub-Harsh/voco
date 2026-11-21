@@ -13,25 +13,32 @@ public class VocoBootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent != null ? intent.getAction() : null;
-        Log.d(TAG, "Device boot event received: " + action);
+        Log.d(TAG, "System event received in VocoBootReceiver: " + action);
 
         SharedPreferences prefs = VocoAlarmScheduler.getPrefs(context);
-        boolean enabled = prefs.getBoolean(VocoAlarmScheduler.KEY_ENABLED, false);
+        boolean scheduleEnabled = prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, false);
+        boolean remindersEnabled = prefs.getBoolean(VocoAlarmScheduler.KEY_ENABLED, false);
 
-        if (!enabled) {
-            Log.d(TAG, "Reminders were disabled before reboot. Not scheduling alarms.");
-            return;
+        // 1. Restore automatic daily schedule if user enabled it
+        if (scheduleEnabled) {
+            Log.d(TAG, "Restoring Daily Schedule after system event: " + action);
+            VocoAlarmScheduler.setupDailySchedule(context);
         }
 
-        int intervalMins = prefs.getInt(VocoAlarmScheduler.KEY_INTERVAL, 5);
-        if (intervalMins < 1) intervalMins = 1;
+        // 2. Restore active interval reminder alarms if reminders were running
+        if (remindersEnabled) {
+            int intervalMins = prefs.getInt(VocoAlarmScheduler.KEY_INTERVAL, 5);
+            if (intervalMins < 1) intervalMins = 1;
 
-        // Fresh schedule generation token after reboot
-        long newGeneration = System.currentTimeMillis();
-        long nowElapsed = SystemClock.elapsedRealtime();
-        long targetElapsed = nowElapsed + (intervalMins * 60 * 1000L);
+            // Fresh schedule generation token after system event
+            long newGeneration = System.currentTimeMillis();
+            long nowElapsed = SystemClock.elapsedRealtime();
+            long targetElapsed = nowElapsed + (intervalMins * 60 * 1000L);
 
-        VocoAlarmScheduler.scheduleNextAlarm(context, targetElapsed, intervalMins, newGeneration);
-        Log.d(TAG, "Restored active Voco reminders on reboot with gen=" + newGeneration + ". Next in " + intervalMins + " mins.");
+            VocoAlarmScheduler.scheduleNextAlarm(context, targetElapsed, intervalMins, newGeneration);
+            Log.d(TAG, "Restored active Voco reminders on " + action + " with gen=" + newGeneration + ". Next in " + intervalMins + " mins.");
+        } else if (!scheduleEnabled) {
+            Log.d(TAG, "Neither reminders nor daily schedule were active. No alarms scheduled.");
+        }
     }
 }

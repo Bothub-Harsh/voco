@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import type { VocabularyWord } from '../types';
+import type { VocabularyWord, DailyScheduleConfig, DailyScheduleState } from '../types';
 
 // ─────────────────────────────────────────────
 // Native Android Plugin Bridge Interface
@@ -42,6 +42,33 @@ interface VocoSchedulerPlugin {
   openExactAlarmSettings(): Promise<{ opened: boolean }>;
   openBatterySettings(): Promise<{ opened: boolean }>;
   openAppSettings(): Promise<{ opened: boolean }>;
+  // Daily Schedule
+  saveDailySchedule(options: {
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+    days: string;
+    notifyOnStartEnd: boolean;
+  }): Promise<{
+    success: boolean;
+    enabled: boolean;
+    isInsideWindow: boolean;
+    isPausedToday: boolean;
+  }>;
+  getDailySchedule(): Promise<{
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+    days: string;
+    notifyOnStartEnd: boolean;
+    isInsideWindow: boolean;
+    isPausedToday: boolean;
+    remindersRunning: boolean;
+  }>;
+  cancelDailySchedule(): Promise<{ success: boolean }>;
+  // Theme sync
+  saveTheme(options: { themeId: string }): Promise<{ success: boolean; themeId?: string }>;
+  getSavedTheme(): Promise<{ themeId: string }>;
   // TTS
   speak(options: { text: string; lang?: string }): Promise<{ success: boolean }>;
   stopSpeech(): Promise<{ success: boolean }>;
@@ -367,6 +394,48 @@ export async function openBatterySettings(): Promise<void> {
   }
 }
 
+/**
+ * Opens Android app notification channel settings.
+ */
+export async function openChannelSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    if (typeof VocoScheduler.openAppSettings === 'function') {
+      await VocoScheduler.openAppSettings();
+    } else {
+      await VocoScheduler.openExactAlarmSettings();
+    }
+  } catch (err) {
+    console.warn('[Voco] Could not open channel settings:', err);
+  }
+}
+
+/**
+ * Persists chosen theme ID to native Android storage so VocoQuizDialogActivity
+ * opens in the exact same theme even when app is killed or swiped away.
+ */
+export async function syncThemeToNative(themeId: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await VocoScheduler.saveTheme({ themeId });
+  } catch (err) {
+    console.warn('[Voco] syncThemeToNative note:', err);
+  }
+}
+
+/**
+ * Reads theme ID from native Android storage if present.
+ */
+export async function getNativeTheme(): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const res = await VocoScheduler.getSavedTheme();
+    return res?.themeId || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────
 // Active reminders state
 // ─────────────────────────────────────────────
@@ -438,6 +507,7 @@ export async function scheduleNativeReminders(
     }
 
     setRemindersActive(true);
+    clearSchedulePausedToday();
     console.log(`[Voco] Native AlarmManager reminders active every ${intervalMinutes} minutes.`);
     return true;
   } catch (err) {
@@ -478,6 +548,10 @@ export async function cancelAllNativeReminders(): Promise<void> {
     await VocoScheduler.stopReminders();
     setRemindersActive(false);
     setNextReminderTimestamp(null);
+    const schedule = getDailyScheduleConfig();
+    if (schedule.enabled && isInsideDailyScheduleWindow(schedule)) {
+      markSchedulePausedToday();
+    }
   } catch (err) {
     console.warn('[Voco] cancelAllNativeReminders error:', err);
   }
@@ -629,4 +703,257 @@ export function setupNotificationListeners(onOpenQuizForWordId: (wordId: string)
       console.warn('[Voco] Native notification listener note:', err);
     }
   }
+}
+
+// ─────────────────────────────────────────────
+// Daily Schedule Service
+// ─────────────────────────────────────────────
+
+export const DAILY_SCHEDULE_STORAGE_KEY = 'voco_daily_schedule_config';
+export const DAILY_SCHEDULE_PAUSED_KEY = 'voco_daily_schedule_paused_date';
+
+export const DEFAULT_DAILY_SCHEDULE: DailyScheduleConfig = {
+  enabled: false,
+  startTime: '08:00',
+  endTime: '21:00',
+  days: [1, 2, 3, 4, 5, 6, 7], // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+  notifyOnStartEnd: true,
+  pausedDate: null,
+};
+
+export const DAY_CHIPS: { id: number; label: string; full: string }[] = [
+  { id: 1, label: 'M', full: 'Mon' },
+  { id: 2, label: 'T', full: 'Tue' },
+  { id: 3, label: 'W', full: 'Wed' },
+  { id: 4, label: 'T', full: 'Thu' },
+  { id: 5, label: 'F', full: 'Fri' },
+  { id: 6, label: 'S', full: 'Sat' },
+  { id: 7, label: 'S', full: 'Sun' },
+];
+
+export function formatTime12h(time24: string): string {
+  if (!time24 || !time24.includes(':')) return time24;
+  const parts = time24.split(':');
+  const hour = parseInt(parts[0], 10);
+  const min = parseInt(parts[1], 10);
+  if (isNaN(hour) || isNaN(min)) return time24;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(min).padStart(2, '0')} ${ampm}`;
+}
+
+export function isOvernightWindow(startTime: string, endTime: string): boolean {
+  if (!startTime || !endTime) return false;
+  const [sh, sm] = startTime.split(':').map((v) => parseInt(v, 10));
+  const [eh, em] = endTime.split(':').map((v) => parseInt(v, 10));
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  return startMins > endMins;
+}
+
+export function getIsoDayOfWeek(date: Date = new Date()): number {
+  const day = date.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
+  return day === 0 ? 7 : day;
+}
+
+export function getTodayDateString(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function isInsideDailyScheduleWindow(config: DailyScheduleConfig, now: Date = new Date()): boolean {
+  if (!config.enabled) return false;
+  const [sh, sm] = (config.startTime || '08:00').split(':').map((v) => parseInt(v, 10));
+  const [eh, em] = (config.endTime || '21:00').split(':').map((v) => parseInt(v, 10));
+  const startMins = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  const currentMins = now.getHours() * 60 + now.getMinutes();
+  const currentIsoDay = getIsoDayOfWeek(now);
+  const daysSet = new Set(config.days || [1, 2, 3, 4, 5, 6, 7]);
+
+  if (startMins < endMins) {
+    // Normal window (e.g. 08:00 - 21:00)
+    return daysSet.has(currentIsoDay) && currentMins >= startMins && currentMins < endMins;
+  } else if (startMins > endMins) {
+    // Overnight window (e.g. 22:00 - 02:00)
+    if (currentMins >= startMins) {
+      return daysSet.has(currentIsoDay);
+    } else if (currentMins < endMins) {
+      const prevIsoDay = currentIsoDay === 1 ? 7 : currentIsoDay - 1;
+      return daysSet.has(prevIsoDay);
+    }
+  }
+  return false;
+}
+
+export function computeDailyScheduleStatus(
+  config: DailyScheduleConfig,
+  now: Date = new Date(),
+  remindersActive: boolean = false
+): {
+  state: DailyScheduleState;
+  summary: string;
+  label: string;
+  isInside: boolean;
+  isPausedToday: boolean;
+} {
+  if (!config.enabled) {
+    return {
+      state: 'off',
+      label: 'Off',
+      summary: 'Automatic daily schedule is turned off.',
+      isInside: false,
+      isPausedToday: false,
+    };
+  }
+
+  const todayStr = getTodayDateString(now);
+  const pausedDate = config.pausedDate || getStorageItem(DAILY_SCHEDULE_PAUSED_KEY);
+  const isPausedToday = todayStr === pausedDate;
+  const isInside = isInsideDailyScheduleWindow(config, now);
+
+  const startFormatted = formatTime12h(config.startTime);
+  const endFormatted = formatTime12h(config.endTime);
+  const interval = getSavedReminderInterval();
+
+  const daysCount = (config.days || []).length;
+  let daysSummary = 'every day';
+  if (daysCount === 5 && !config.days.includes(6) && !config.days.includes(7)) {
+    daysSummary = 'Mon–Fri';
+  } else if (daysCount === 2 && config.days.includes(6) && config.days.includes(7)) {
+    daysSummary = 'weekends';
+  } else if (daysCount < 7) {
+    daysSummary = `${daysCount} days/wk`;
+  }
+
+  const summary = `Reminders run ${startFormatted} – ${endFormatted}, every ${interval} min, ${daysSummary}`;
+
+  if (isPausedToday) {
+    return {
+      state: 'paused',
+      label: 'Paused for today',
+      summary: `${summary} (resumes tomorrow at ${startFormatted})`,
+      isInside,
+      isPausedToday: true,
+    };
+  }
+
+  if (isInside && (remindersActive || true)) {
+    return {
+      state: 'active',
+      label: 'Active now',
+      summary,
+      isInside: true,
+      isPausedToday: false,
+    };
+  }
+
+  // Outside window
+  const [sh, sm] = (config.startTime || '08:00').split(':').map((v) => parseInt(v, 10));
+  const currentMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = sh * 60 + sm;
+  const currentIsoDay = getIsoDayOfWeek(now);
+  const daysSet = new Set(config.days || []);
+
+  let nextLabel = `Starts tomorrow ${startFormatted}`;
+  if (daysSet.has(currentIsoDay) && currentMins < startMins) {
+    nextLabel = `Starts today ${startFormatted}`;
+  }
+
+  return {
+    state: 'scheduled',
+    label: nextLabel,
+    summary,
+    isInside: false,
+    isPausedToday: false,
+  };
+}
+
+export function getDailyScheduleConfig(): DailyScheduleConfig {
+  const raw = getStorageItem(DAILY_SCHEDULE_STORAGE_KEY);
+  if (!raw) return { ...DEFAULT_DAILY_SCHEDULE };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: Boolean(parsed.enabled),
+      startTime: parsed.startTime || '08:00',
+      endTime: parsed.endTime || '21:00',
+      days: Array.isArray(parsed.days) && parsed.days.length > 0 ? parsed.days : [1, 2, 3, 4, 5, 6, 7],
+      notifyOnStartEnd: parsed.notifyOnStartEnd !== false,
+      pausedDate: parsed.pausedDate || getStorageItem(DAILY_SCHEDULE_PAUSED_KEY) || null,
+    };
+  } catch {
+    return { ...DEFAULT_DAILY_SCHEDULE };
+  }
+}
+
+export function setDailyScheduleConfig(config: DailyScheduleConfig): void {
+  setStorageItem(DAILY_SCHEDULE_STORAGE_KEY, JSON.stringify(config));
+  if (config.pausedDate) {
+    setStorageItem(DAILY_SCHEDULE_PAUSED_KEY, config.pausedDate);
+  } else {
+    removeStorageItem(DAILY_SCHEDULE_PAUSED_KEY);
+  }
+}
+
+export async function saveDailySchedule(config: DailyScheduleConfig): Promise<boolean> {
+  setDailyScheduleConfig(config);
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await VocoScheduler.saveDailySchedule({
+        enabled: config.enabled,
+        startTime: config.startTime,
+        endTime: config.endTime,
+        days: JSON.stringify(config.days),
+        notifyOnStartEnd: config.notifyOnStartEnd,
+      });
+      return true;
+    } catch (err) {
+      console.warn('[Voco] saveDailySchedule native error:', err);
+      return false;
+    }
+  }
+  return true;
+}
+
+export async function syncDailyScheduleFromNative(): Promise<DailyScheduleConfig | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const native = await VocoScheduler.getDailySchedule();
+    if (!native) return null;
+    let parsedDays = [1, 2, 3, 4, 5, 6, 7];
+    try {
+      parsedDays = JSON.parse(native.days);
+    } catch {}
+    const config: DailyScheduleConfig = {
+      enabled: native.enabled,
+      startTime: native.startTime || '08:00',
+      endTime: native.endTime || '21:00',
+      days: parsedDays,
+      notifyOnStartEnd: native.notifyOnStartEnd !== false,
+      pausedDate: native.isPausedToday ? getTodayDateString() : null,
+    };
+    setDailyScheduleConfig(config);
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+export function markSchedulePausedToday(): void {
+  const today = getTodayDateString();
+  setStorageItem(DAILY_SCHEDULE_PAUSED_KEY, today);
+  const cfg = getDailyScheduleConfig();
+  cfg.pausedDate = today;
+  setDailyScheduleConfig(cfg);
+}
+
+export function clearSchedulePausedToday(): void {
+  removeStorageItem(DAILY_SCHEDULE_PAUSED_KEY);
+  const cfg = getDailyScheduleConfig();
+  cfg.pausedDate = null;
+  setDailyScheduleConfig(cfg);
 }

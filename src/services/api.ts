@@ -218,23 +218,44 @@ export function validateAiQuizResponse(data: unknown): WordQuizPayload {
   };
 }
 
+let inFlightStatusCheck: Promise<BackendStatus> | null = null;
+
 /**
  * Checks backend health and Groq API key configuration status with graceful cold-start handling.
  *
  * Cold-start handling strategy for Render free-tier:
  * 1. Immediate offline check: Returns unavailable if navigator.onLine is false.
- * 2. Progressive state updates: Emits 'checking' -> 'waking' (if cold start detected) -> 'connected'/'unavailable'.
- * 3. Attempt 1 uses a fast 12s timeout. If warm, it returns in ~200-500ms.
- * 4. If Attempt 1 times out or receives 502/503/504 gateway statuses (indicating a sleeping container),
+ * 2. Rapid tap debounce: Deduplicates concurrent checks into a single in-flight promise.
+ * 3. Progressive state updates: Emits 'checking' -> 'waking' (if cold start detected) -> 'connected'/'unavailable'.
+ * 4. Attempt 1 uses a fast 12s timeout. If warm, it returns in ~200-500ms.
+ * 5. If Attempt 1 times out or receives 502/503/504 gateway statuses (indicating a sleeping container),
  *    the app transitions to 'waking' ("Backend is waking up...") instead of showing a false error.
- * 5. Attempt 2 uses a longer 40s timeout after a 3s delay to give Render time to spin up.
- * 6. Attempt 3 (final attempt) uses a 25s timeout.
- * 7. Exits immediately on success or permanent client error (4xx); limits total retries to 3;
+ * 6. Attempt 2 uses a longer 40s timeout after a 3s delay to give Render time to spin up.
+ * 7. Attempt 3 (final attempt) uses a 25s timeout.
+ * 8. Exits immediately on success or permanent client error (4xx); limits total retries to 3;
  *    never enters an infinite loop; completely non-blocking for local features.
  */
 export async function checkBackendStatus(
   onStateChange?: (status: BackendStatus) => void
 ): Promise<BackendStatus> {
+  if (inFlightStatusCheck) {
+    return inFlightStatusCheck;
+  }
+  inFlightStatusCheck = (async () => {
+    try {
+      return await executeCheckBackendStatus(onStateChange);
+    } finally {
+      inFlightStatusCheck = null;
+    }
+  })();
+  return inFlightStatusCheck;
+}
+
+async function executeCheckBackendStatus(
+  onStateChange?: (status: BackendStatus) => void
+): Promise<BackendStatus> {
+  const checkStartTime = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+
   // Check if browser/device is offline
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const offlineStatus: BackendStatus = {
@@ -243,6 +264,7 @@ export async function checkBackendStatus(
       message: 'No internet connection. Please check your network.',
       reachable: false,
       state: 'unavailable',
+      lastCheckedAt: Date.now(),
     };
     onStateChange?.(offlineStatus);
     return offlineStatus;
@@ -255,6 +277,7 @@ export async function checkBackendStatus(
     message: 'Checking connection...',
     reachable: false,
     state: 'checking',
+    lastCheckedAt: Date.now(),
   };
   onStateChange?.(checkingStatus);
 
@@ -275,6 +298,7 @@ export async function checkBackendStatus(
         message: 'Backend is waking up...',
         reachable: false,
         state: 'waking',
+        lastCheckedAt: Date.now(),
       };
       onStateChange?.(wakingStatus);
 
@@ -307,6 +331,7 @@ export async function checkBackendStatus(
           message: 'Backend unavailable. Please try again.',
           reachable: false,
           state: 'unavailable',
+          lastCheckedAt: Date.now(),
         };
         onStateChange?.(unavailableStatus);
         return unavailableStatus;
@@ -314,12 +339,40 @@ export async function checkBackendStatus(
 
       const data = await res.json();
       const isConfigured = Boolean(data?.configured);
+      const elapsedMs = Math.round(
+        (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()) - checkStartTime
+      );
+
+      // If server is reachable but AI key is missing, flag as AI service problem
+      if (!isConfigured) {
+        const aiProblemStatus: BackendStatus = {
+          configured: false,
+          model: data?.model || 'unknown',
+          message: 'AI service problem: Groq API key is not configured on the backend server.',
+          reachable: true,
+          state: 'ai_problem',
+          responseTimeMs: elapsedMs,
+          serverStartTime: data?.startTime,
+          uptimeSeconds: data?.uptimeSeconds,
+          lastPingAt: data?.lastSelfPingAt,
+          lastCheckedAt: Date.now(),
+        };
+        onStateChange?.(aiProblemStatus);
+        return aiProblemStatus;
+      }
+
       const connectedStatus: BackendStatus = {
         configured: isConfigured,
         model: data?.model || 'unknown',
         message: 'Backend connected.',
         reachable: true,
         state: 'connected',
+        responseTimeMs: elapsedMs,
+        serverStartTime: data?.startTime,
+        serverTime: data?.serverTime,
+        uptimeSeconds: data?.uptimeSeconds,
+        lastPingAt: data?.lastSelfPingAt,
+        lastCheckedAt: Date.now(),
       };
       onStateChange?.(connectedStatus);
       return connectedStatus;
@@ -334,6 +387,7 @@ export async function checkBackendStatus(
           message: 'No internet connection. Please check your network.',
           reachable: false,
           state: 'unavailable',
+          lastCheckedAt: Date.now(),
         };
         onStateChange?.(offlineStatus);
         return offlineStatus;
@@ -353,6 +407,7 @@ export async function checkBackendStatus(
     message: 'Backend unavailable. Please try again.',
     reachable: false,
     state: 'unavailable',
+    lastCheckedAt: Date.now(),
   };
   onStateChange?.(finalUnavailable);
   return finalUnavailable;

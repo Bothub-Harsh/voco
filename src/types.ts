@@ -33,7 +33,15 @@ export interface ActiveQuizSession {
 
 export type WordQuizPayload = Omit<VocabularyWord, 'id' | 'dateAdded' | 'wordLower'>;
 
-export type BackendConnectionState = 'checking' | 'waking' | 'connected' | 'unavailable';
+export type BackendConnectionState =
+  | 'checking'
+  | 'online'
+  | 'waking'
+  | 'down'
+  | 'offline'
+  | 'ai_problem'
+  | 'connected'
+  | 'unavailable';
 
 export interface BackendStatus {
   configured: boolean;
@@ -41,6 +49,13 @@ export interface BackendStatus {
   message: string;
   reachable: boolean;
   state?: BackendConnectionState;
+  responseTimeMs?: number;
+  serverStartTime?: string;
+  serverTime?: string;
+  uptimeSeconds?: number;
+  lastPingAt?: string;
+  lastCheckedAt?: number;
+  errorDetail?: string;
 }
 
 export type SaveStatusState = 'idle' | 'saving' | 'saved' | 'error';
@@ -70,4 +85,15 @@ export interface PracticeAllSession {
   answers: { wordId: string; correct: boolean }[];  // Track answers
   allSavedWords: VocabularyWord[];  // For quiz option generation
 }
+
+export interface DailyScheduleConfig {
+  enabled: boolean;
+  startTime: string; // "HH:mm" 24h format (e.g. "08:00")
+  endTime: string;   // "HH:mm" 24h format (e.g. "21:00")
+  days: number[];    // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+  notifyOnStartEnd: boolean; // default true
+  pausedDate?: string | null; // "yyyy-MM-dd"
+}
+
+export type DailyScheduleState = 'active' | 'scheduled' | 'paused' | 'off';
 

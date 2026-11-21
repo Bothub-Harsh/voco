@@ -94,17 +94,31 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
       {/* Card container */}
       <div
-        className="w-full sm:max-w-md bg-white dark:bg-[#1B1D25] rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-[#3E4452] flex flex-col"
-        style={{ maxHeight: '92dvh' }}
+        className="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl border flex flex-col transition-colors"
+        style={{
+          maxHeight: '92dvh',
+          backgroundColor: 'var(--voco-bg-card)',
+          borderColor: 'var(--voco-border)',
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2.5 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] border border-indigo-100 dark:border-[#6554F5]/30">
+            <span
+              className="text-xs font-bold px-2.5 py-1 rounded-full border transition-colors"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                borderColor: 'var(--voco-accent-border)',
+                color: 'var(--voco-accent)',
+              }}
+            >
               📖 Flashcard
             </span>
             {remainingCount > 0 && (
-              <span className="text-xs font-bold text-slate-500 dark:text-[#A5A8B5]">
+              <span
+                className="text-xs font-bold transition-colors"
+                style={{ color: 'var(--voco-text-muted)' }}
+              >
                 +{remainingCount} more
               </span>
             )}
@@ -112,7 +126,8 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-[#F1F1F5] hover:bg-slate-100 dark:hover:bg-[#252834] transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ color: 'var(--voco-text-muted)' }}
             aria-label="Close"
           >
             <X className="w-4 h-4" />
@@ -136,19 +151,27 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
             >
               {/* ── FRONT FACE (Word + Question + Tap to reveal hint) ── */}
               <div
-                className={`w-full min-h-[200px] bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/40 dark:from-[#232634] dark:via-[#1B1D25] dark:to-[#252834] rounded-2xl p-6 border border-indigo-100 dark:border-[#3E4452] shadow-sm flex flex-col items-center justify-center text-center ${
+                className={`w-full min-h-[200px] rounded-2xl p-6 border shadow-sm flex flex-col items-center justify-center text-center transition-colors ${
                   isFlipped ? 'pointer-events-none' : ''
                 }`}
                 style={{
                   backfaceVisibility: 'hidden',
                   WebkitBackfaceVisibility: 'hidden',
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border)',
                 }}
               >
-                <p className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-[#F1F1F5] tracking-tight leading-tight">
+                <p
+                  className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight transition-colors"
+                  style={{ color: 'var(--voco-text-primary)' }}
+                >
                   {word.word}
                 </p>
 
-                <p className="text-sm font-semibold text-slate-600 dark:text-[#A5A8B5] mt-2">
+                <p
+                  className="text-sm font-semibold mt-2 transition-colors"
+                  style={{ color: 'var(--voco-text-muted)' }}
+                >
                   What does this word mean?
                 </p>
 
@@ -157,7 +180,8 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                     type="button"
                     onClick={handleSpeak}
                     disabled={isSpeaking}
-                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-[#6554F5] dark:text-[#8875F5] hover:text-[#5243E4] transition-colors disabled:opacity-50"
+                    className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
+                    style={{ color: 'var(--voco-accent)' }}
                     aria-label="Pronounce word"
                   >
                     <Volume2 className="w-3.5 h-3.5" />
@@ -165,29 +189,44 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                   </button>
                 )}
 
-                <div className="mt-4 px-3.5 py-1.5 rounded-full bg-indigo-50 dark:bg-[#6554F5]/15 border border-indigo-100 dark:border-[#6554F5]/30 text-xs font-bold text-[#6554F5] dark:text-[#8875F5]">
+                <div
+                  className="mt-4 px-3.5 py-1.5 rounded-full border text-xs font-bold transition-colors"
+                  style={{
+                    backgroundColor: 'var(--voco-accent-soft)',
+                    borderColor: 'var(--voco-accent-border)',
+                    color: 'var(--voco-accent)',
+                  }}
+                >
                   👆 Tap card to reveal answer
                 </div>
               </div>
 
               {/* ── BACK FACE (Saved English & Hindi Meanings + Example) ── */}
               <div
-                className={`absolute inset-0 w-full min-h-[200px] bg-white dark:bg-[#1E202A] rounded-2xl p-5 border border-slate-200 dark:border-[#3E4452] shadow-sm flex flex-col justify-between overflow-y-auto ${
+                className={`absolute inset-0 w-full min-h-[200px] rounded-2xl p-5 border shadow-sm flex flex-col justify-between overflow-y-auto transition-colors ${
                   !isFlipped ? 'pointer-events-none' : ''
                 }`}
                 style={{
                   backfaceVisibility: 'hidden',
                   WebkitBackfaceVisibility: 'hidden',
                   transform: 'rotateY(180deg)',
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border)',
                 }}
               >
                 <div className="space-y-3 text-left">
                   {/* English Meaning */}
                   <div>
-                    <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-[#8E92A4]">
+                    <span
+                      className="text-[10px] font-extrabold tracking-wider uppercase transition-colors"
+                      style={{ color: 'var(--voco-text-muted)' }}
+                    >
                       English Meaning
                     </span>
-                    <div className="text-sm sm:text-[15px] font-bold text-slate-900 dark:text-[#F1F1F5] mt-0.5 leading-snug">
+                    <div
+                      className="text-sm sm:text-[15px] font-bold mt-0.5 leading-snug transition-colors"
+                      style={{ color: 'var(--voco-text-primary)' }}
+                    >
                       <FormattedMeaning text={word.meaning} targetWord={word.word} />
                     </div>
                   </div>
@@ -195,10 +234,16 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
                   {/* Hindi Meaning (if available) */}
                   {word.hindiMeaning && word.hindiMeaning.trim() && (
                     <div>
-                      <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-[#8E92A4]">
+                      <span
+                        className="text-[10px] font-extrabold tracking-wider uppercase transition-colors"
+                        style={{ color: 'var(--voco-text-muted)' }}
+                      >
                         Hindi Meaning
                       </span>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-[#D1D4DE] mt-0.5 leading-snug">
+                      <p
+                        className="text-sm font-semibold mt-0.5 leading-snug transition-colors"
+                        style={{ color: 'var(--voco-text-primary)' }}
+                      >
                         <FormattedMeaning text={word.hindiMeaning} targetWord={word.word} />
                       </p>
                     </div>
@@ -206,18 +251,33 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
 
                   {/* Example (if available) */}
                   {word.example && word.example.trim() && (
-                    <div className="bg-slate-50 dark:bg-[#15171E] rounded-xl p-2.5 border border-slate-100 dark:border-[#2D313E]">
-                      <span className="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-[#8E92A4]">
+                    <div
+                      className="rounded-xl p-2.5 border transition-colors"
+                      style={{
+                        backgroundColor: 'var(--voco-bg-page)',
+                        borderColor: 'var(--voco-border-subtle)',
+                      }}
+                    >
+                      <span
+                        className="text-[10px] font-extrabold tracking-wider uppercase transition-colors"
+                        style={{ color: 'var(--voco-text-muted)' }}
+                      >
                         Example
                       </span>
-                      <p className="text-xs sm:text-sm text-slate-700 dark:text-[#CBD0DF] italic mt-0.5 leading-relaxed">
+                      <p
+                        className="text-xs sm:text-sm italic mt-0.5 leading-relaxed transition-colors"
+                        style={{ color: 'var(--voco-text-secondary)' }}
+                      >
                         <FormattedMeaning text={`"${word.example.trim()}"`} targetWord={word.word} />
                       </p>
                     </div>
                   )}
                 </div>
 
-                <p className="text-center text-[11px] font-semibold text-slate-400 dark:text-[#8E92A4] mt-2">
+                <p
+                  className="text-center text-[11px] font-semibold mt-2 transition-colors"
+                  style={{ color: 'var(--voco-text-muted)' }}
+                >
                   👆 Tap card to flip back
                 </p>
               </div>
@@ -248,7 +308,11 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
               <button
                 type="button"
                 onClick={onNext}
-                className="w-full py-3.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] text-white font-bold text-sm rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+                className="w-full py-3.5 px-4 font-bold text-sm rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+                style={{
+                  backgroundColor: 'var(--voco-accent)',
+                  color: '#FFFFFF',
+                }}
               >
                 <span>Next</span>
               </button>
@@ -256,7 +320,11 @@ export const FlashcardScreen: React.FC<FlashcardScreenProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-3.5 px-4 bg-[#6554F5] hover:bg-[#5243E4] text-white font-bold text-sm rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center"
+                className="w-full py-3.5 px-4 font-bold text-sm rounded-2xl transition-all shadow-md active:scale-95 flex items-center justify-center"
+                style={{
+                  backgroundColor: 'var(--voco-accent)',
+                  color: '#FFFFFF',
+                }}
               >
                 Close
               </button>

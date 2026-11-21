@@ -37,6 +37,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     public static final String EXTRA_HINDI_EXAMPLE = "com.harsh.voco.EXTRA_HINDI_EXAMPLE";
     public static final String EXTRA_NOTIFICATION_ID = "com.harsh.voco.EXTRA_NOTIFICATION_ID";
     public static final String EXTRA_IS_TEST = "com.harsh.voco.EXTRA_IS_TEST";
+    public static final String EXTRA_THEME = "com.harsh.voco.EXTRA_THEME";
 
     public static final String PREFS_QUIZ_STATS = "voco_quiz_stats";
     public static final String KEY_TOTAL_ANSWERED = "total_answered";
@@ -56,6 +57,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     // Flip card state
     private boolean isShowingFront = true;
     private boolean isFlipping = false;
+    private VocoTheme currentTheme;
 
     // Views
     private TextView textHeaderTag;
@@ -98,6 +100,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         readIntentData(getIntent());
 
+        initThemeAndStyles();
         initViews();
         applyResponsiveCardWidth();
     }
@@ -115,8 +118,23 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         }
 
         resetToFront();
+        initThemeAndStyles();
         initViews();
         applyResponsiveCardWidth();
+    }
+
+    private void initThemeAndStyles() {
+        String themeId = getIntent() != null && getIntent().hasExtra(EXTRA_THEME)
+            ? getIntent().getStringExtra(EXTRA_THEME)
+            : VocoAlarmScheduler.getSelectedTheme(this);
+        currentTheme = VocoTheme.get(themeId);
+        if (getWindow() != null) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            if (lp != null) {
+                lp.dimAmount = currentTheme.isDark ? 0.65f : 0.50f;
+                getWindow().setAttributes(lp);
+            }
+        }
     }
 
     @Override
@@ -202,6 +220,10 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         populateCardData();
         updateBottomButton();
 
+        if (currentTheme != null) {
+            currentTheme.applyToDialog(this);
+        }
+
         // ─── Dynamic Next / Close Button Listener ───
         btnBottomAction.setOnClickListener(v -> {
             int otherPending = VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
@@ -244,18 +266,28 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
      */
     public void updateBottomButton() {
         int otherPending = VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
+        float density = getResources().getDisplayMetrics().density;
+        if (currentTheme == null) {
+            currentTheme = VocoTheme.get(VocoAlarmScheduler.getSelectedTheme(this));
+        }
+
+        if (btnBottomAction != null) {
+            btnBottomAction.setBackground(VocoTheme.createButtonDrawable(currentTheme.accent, currentTheme.accentHover, 12f, density));
+            btnBottomAction.setTextColor(Color.WHITE);
+        }
 
         if (otherPending > 0) {
-            btnBottomAction.setText("Next");
-            btnBottomAction.setBackgroundResource(R.drawable.bg_btn_primary);
-            btnBottomAction.setTextColor(Color.WHITE);
-            textPendingBadge.setVisibility(View.VISIBLE);
-            textPendingBadge.setText("+" + otherPending + " more");
+            if (btnBottomAction != null) btnBottomAction.setText("Next");
+            if (textPendingBadge != null) {
+                textPendingBadge.setVisibility(View.VISIBLE);
+                textPendingBadge.setText("+" + otherPending + " more");
+                textPendingBadge.setTextColor(currentTheme.textMuted);
+            }
         } else {
-            btnBottomAction.setText("Close");
-            btnBottomAction.setBackgroundResource(R.drawable.bg_btn_primary);
-            btnBottomAction.setTextColor(Color.WHITE);
-            textPendingBadge.setVisibility(View.GONE);
+            if (btnBottomAction != null) btnBottomAction.setText("Close");
+            if (textPendingBadge != null) {
+                textPendingBadge.setVisibility(View.GONE);
+            }
         }
     }
 

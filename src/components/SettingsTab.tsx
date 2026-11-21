@@ -1,32 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
+  Server,
   Bell,
-  Clock,
-  Volume2,
-  BatteryCharging,
-  Database,
-  ChevronDown,
-  ChevronUp,
+  Calendar,
   Palette,
+  Database,
+  Smartphone,
+  Sparkles,
+  Clock,
   Play,
   Square,
   CheckCircle2,
   AlertTriangle,
   ShieldCheck,
-  HardDrive,
-  Server,
+  Volume2,
   RefreshCw,
   Loader2,
   WifiOff,
+  Info,
+  KeyRound,
+  Sun,
+  Moon,
+  HelpCircle,
+  X,
+  ArrowLeft,
+  ChevronRight,
+  BatteryCharging,
 } from 'lucide-react';
-import type { BackendStatus, StorageStatus } from '../types';
+import type { BackendStatus, StorageStatus, DailyScheduleConfig } from '../types';
 import { type ThemeId, THEME_LIST, getThemeDefinition } from '../services/theme';
 import { BackupControls } from './BackupControls';
 import {
   isNativeApp,
   openExactAlarmSettings,
   openBatterySettings,
+  openChannelSettings,
   checkExactAlarmPermission,
+  getDailyScheduleConfig,
+  saveDailySchedule,
+  computeDailyScheduleStatus,
+  isOvernightWindow,
+  formatTime12h,
+  DAY_CHIPS,
+  syncDailyScheduleFromNative,
 } from '../services/notifications';
 
 interface SettingsTabProps {
@@ -52,7 +68,24 @@ interface SettingsTabProps {
 
 const PRESET_INTERVALS = [1, 2, 3, 5, 10, 15, 30];
 
-type ActiveSection = 'reminders' | 'background' | 'data' | 'appearance' | 'all';
+export type SettingsSubPage = 'server' | 'reminders' | 'schedule' | 'themes' | 'data' | 'device';
+
+function formatUptime(seconds?: number): string {
+  if (typeof seconds !== 'number' || seconds <= 0) return 'Just started';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return `${hours}h ${remainingMins}m`;
+}
+
+function formatTime(timestamp?: number | string | null): string {
+  if (!timestamp) return 'Not yet';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return 'Recently';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   totalWords,
@@ -73,10 +106,100 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 }) => {
   const native = isNativeApp();
   const [exactAlarmStatus, setExactAlarmStatus] = useState<'granted' | 'prompt' | 'unsupported'>('prompt');
-  const [showLearnMoreBg, setShowLearnMoreBg] = useState(false);
-  const [activeSection, setActiveSection] = useState<ActiveSection>('reminders');
+  const [subPage, setSubPage] = useState<SettingsSubPage | null>(null);
+  const [scheduleConfig, setScheduleConfig] = useState<DailyScheduleConfig>(() => getDailyScheduleConfig());
+  const [scheduleSaveStatus, setScheduleSaveStatus] = useState<string | null>(null);
+  const [activeNodeTooltip, setActiveNodeTooltip] = useState<'phone' | 'server' | 'ai' | null>(null);
+  const [showServerLegend, setShowServerLegend] = useState(false);
+  const [showBatteryGuide, setShowBatteryGuide] = useState(false);
+
   const currentTheme = getThemeDefinition(theme);
 
+  // Sync daily schedule from native preferences on mount
+  useEffect(() => {
+    syncDailyScheduleFromNative().then((synced) => {
+      if (synced) setScheduleConfig(synced);
+    });
+  }, []);
+
+  // Listen to browser popstate so Android back button returns to Settings home
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.vocoSubPage) {
+        setSubPage(e.state.vocoSubPage);
+      } else {
+        setSubPage(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const openSubPage = useCallback((page: SettingsSubPage) => {
+    window.history.pushState({ vocoSubPage: page }, '');
+    setSubPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleBack = useCallback(() => {
+    if (window.history.state?.vocoSubPage) {
+      window.history.back();
+    } else {
+      setSubPage(null);
+    }
+  }, []);
+
+  const handleToggleSchedule = async (enabled: boolean) => {
+    const updated = { ...scheduleConfig, enabled };
+    setScheduleConfig(updated);
+    await saveDailySchedule(updated);
+    setScheduleSaveStatus(enabled ? 'Schedule activated' : 'Schedule turned off');
+    setTimeout(() => setScheduleSaveStatus(null), 3000);
+    onStatusChange(enabled ? 'Automatic daily schedule enabled.' : 'Daily schedule turned off.');
+  };
+
+  const handleUpdateTime = async (field: 'startTime' | 'endTime', value: string) => {
+    const updated = { ...scheduleConfig, [field]: value };
+    setScheduleConfig(updated);
+    if (updated.startTime !== updated.endTime) {
+      await saveDailySchedule(updated);
+      setScheduleSaveStatus('Saved');
+      setTimeout(() => setScheduleSaveStatus(null), 2500);
+    }
+  };
+
+  const handleToggleDay = async (dayId: number) => {
+    const currentDays = scheduleConfig.days || [1, 2, 3, 4, 5, 6, 7];
+    let newDays: number[];
+    if (currentDays.includes(dayId)) {
+      if (currentDays.length <= 1) {
+        onStatusChange('Please keep at least one active day.', true);
+        return;
+      }
+      newDays = currentDays.filter((d) => d !== dayId);
+    } else {
+      newDays = [...currentDays, dayId].sort();
+    }
+    const updated = { ...scheduleConfig, days: newDays };
+    setScheduleConfig(updated);
+    await saveDailySchedule(updated);
+    setScheduleSaveStatus('Days updated');
+    setTimeout(() => setScheduleSaveStatus(null), 2500);
+  };
+
+  const handleToggleNotify = async (notify: boolean) => {
+    const updated = { ...scheduleConfig, notifyOnStartEnd: notify };
+    setScheduleConfig(updated);
+    await saveDailySchedule(updated);
+    setScheduleSaveStatus('Saved');
+    setTimeout(() => setScheduleSaveStatus(null), 2500);
+  };
+
+  const scheduleStatus = computeDailyScheduleStatus(scheduleConfig, new Date(), remindersActive);
+  const isOvernight = isOvernightWindow(scheduleConfig.startTime, scheduleConfig.endTime);
+  const isEqualTime = scheduleConfig.startTime === scheduleConfig.endTime;
+
+  // Check alarm permissions on mount and window focus
   useEffect(() => {
     let isMounted = true;
     const checkPermissions = async () => {
@@ -89,13 +212,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         }
       }
     };
-
     checkPermissions();
-
     const onFocus = () => {
       checkPermissions();
     };
-
     window.addEventListener('focus', onFocus);
     return () => {
       isMounted = false;
@@ -103,163 +223,1490 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     };
   }, [native]);
 
-  const allBackgroundReady = permission === 'granted' && (!native || exactAlarmStatus === 'granted');
+  // Derived summaries for Settings HOME rows
+  const serverSummary = !isOnline || backendStatus?.state === 'offline'
+    ? 'No internet'
+    : backendStatus?.state === 'checking'
+      ? 'Checking connection...'
+      : backendStatus?.state === 'waking'
+        ? 'Waking up...'
+        : backendStatus?.state === 'down'
+          ? 'Offline or sleeping'
+          : backendStatus?.state === 'ai_problem'
+            ? 'Key error'
+            : backendStatus?.responseTimeMs !== undefined
+              ? `Online • ${backendStatus.responseTimeMs}ms`
+              : 'Online';
 
-  return (
-    <div className="space-y-4 animate-fade-in-up pb-8">
-      {/* ━━━━━━━━━━━━━━━━━━━━ DASHBOARD HEADER ━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="px-1 flex items-center justify-between">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-            Control Centre
-          </h2>
-          <p className="text-xs text-slate-400 dark:text-zinc-400">
-            Visual dashboard &amp; system controls
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setActiveSection(activeSection === 'all' ? 'reminders' : 'all')}
-          className="text-[11px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline px-2.5 py-1 rounded-lg bg-indigo-50/70 dark:bg-[#6554F5]/15 border border-indigo-100 dark:border-[#6554F5]/30 transition-colors"
-        >
-          {activeSection === 'all' ? 'Show Tiles' : 'Expand All'}
-        </button>
-      </div>
+  const remindersSummary = `Every ${reminderInterval} min • ${remindersActive ? 'Running' : 'Stopped'}`;
 
-      {/* ━━━━━━━━━━━━━━━━━━━━ 1. FOUR DASHBOARD TILES (2x2 GRID) ━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="grid grid-cols-2 gap-2.5">
-        {/* Tile 1: Notifications & Reminders */}
-        <button
-          type="button"
-          onClick={() => setActiveSection('reminders')}
-          className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
-            activeSection === 'reminders' || activeSection === 'all'
-              ? 'border-[#6554F5] dark:border-[#8875F5] ring-2 ring-[#6554F5]/30 bg-indigo-50/50 dark:bg-[#252834]'
-              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
-          }`}
-        >
-          <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
-              <Bell className="w-4 h-4" />
-            </div>
-            {/* Visual status indicator */}
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                remindersActive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
-                  : 'bg-slate-100 dark:bg-[#15171E] text-slate-600 dark:text-[#A5A8B5] border border-slate-300 dark:border-[#3E4452]'
-              }`}
+  const scheduleSummary = scheduleConfig.enabled
+    ? `${formatTime12h(scheduleConfig.startTime)} – ${formatTime12h(scheduleConfig.endTime)} • ${scheduleStatus.label}`
+    : 'Off • Starts morning & stops night';
+
+  const dataSummary = `${totalWords} ${totalWords === 1 ? 'word' : 'words'} • Export / Import`;
+
+  const deviceSummary = permission === 'granted' && (!native || exactAlarmStatus === 'granted')
+    ? 'All permissions ready'
+    : 'Needs permission setup';
+
+  // 24-hour bar calculation for Schedule Sub-page
+  const getMinutesFromTime = (timeStr: string) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const startMin = getMinutesFromTime(scheduleConfig.startTime);
+  const endMin = getMinutesFromTime(scheduleConfig.endTime);
+  const totalMinutes = 24 * 60;
+  const startPct = Math.min(100, Math.max(0, (startMin / totalMinutes) * 100));
+  const endPct = Math.min(100, Math.max(0, (endMin / totalMinutes) * 100));
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: SERVER (Architecture Diagram instead of text)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'server') {
+    const isChecking = backendStatus?.state === 'checking';
+    const isWaking = backendStatus?.state === 'waking';
+    const isDown = backendStatus?.state === 'down';
+    const isOffline = !isOnline || backendStatus?.state === 'offline';
+    const isAiProblem = backendStatus?.state === 'ai_problem';
+
+    // Status for AI Node
+    const aiNodeStatus = isOffline || isDown || isChecking || isWaking
+      ? { label: 'Unknown', isOk: false, icon: HelpCircle, color: 'text-slate-400 dark:text-zinc-500' }
+      : isAiProblem
+        ? { label: 'Problem', isOk: false, icon: AlertTriangle, color: 'text-amber-500' }
+        : { label: 'Ready', isOk: true, icon: CheckCircle2, color: 'text-emerald-500' };
+
+    // Status for Server Node
+    const serverNodeStatus = isOffline
+      ? { label: 'Offline', isOk: false, icon: WifiOff, color: 'text-slate-400 dark:text-zinc-500' }
+      : isChecking
+        ? { label: 'Checking', isOk: null, icon: Loader2, color: 'text-blue-500' }
+        : isWaking
+          ? { label: 'Waking', isOk: null, icon: Clock, color: 'text-amber-500' }
+          : isDown
+            ? { label: 'Down', isOk: false, icon: AlertTriangle, color: 'text-rose-500' }
+            : { label: `${backendStatus?.responseTimeMs ?? 0}ms`, isOk: true, icon: CheckCircle2, color: 'text-emerald-500' };
+
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
             >
-              <span
-                className={`w-1.5 h-1.5 rounded-full mr-1 ${
-                  remindersActive ? 'bg-[#28C995] animate-pulse' : 'bg-slate-400 dark:bg-zinc-500'
-                }`}
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+              Server
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowServerLegend(true)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:text-zinc-400 dark:hover:text-zinc-200"
+            title="Status legend"
+            aria-label="Status legend"
+          >
+            <Info className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* ── Architecture Diagram ── */}
+        <div
+          className="p-4 rounded-2xl border transition-all space-y-4"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider text-center">
+            System Architecture
+          </div>
+
+          <div className="relative flex items-center justify-between px-1 sm:px-4 py-2">
+            {/* SVG Connecting Lines with optional checking animation */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 0 }}
+            >
+              <line
+                x1="22%"
+                y1="36%"
+                x2="45%"
+                y2="36%"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray={isChecking ? '4 4' : 'none'}
+                className={`text-slate-300 dark:text-zinc-700 ${isChecking ? 'animate-pulse' : ''}`}
               />
-              {remindersActive ? `${reminderInterval}m` : 'Paused'}
+              <line
+                x1="55%"
+                y1="36%"
+                x2="78%"
+                y2="36%"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray={isChecking ? '4 4' : 'none'}
+                className={`text-slate-300 dark:text-zinc-700 ${isChecking ? 'animate-pulse' : ''}`}
+              />
+            </svg>
+
+            {/* Node 1: Phone */}
+            <button
+              type="button"
+              onClick={() => setActiveNodeTooltip(activeNodeTooltip === 'phone' ? null : 'phone')}
+              className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-none"
+            >
+              <div
+                className="w-13 h-13 rounded-2xl flex items-center justify-center border shadow-xs transition-transform group-hover:scale-105"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border-subtle)',
+                  color: 'var(--voco-accent)',
+                }}
+              >
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-1.5">
+                Phone
+              </span>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-400 -mt-0.5">
+                This app
+              </span>
+              <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-[#28C995]">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Ready</span>
+              </div>
+            </button>
+
+            {/* Node 2: Server */}
+            <button
+              type="button"
+              onClick={() => setActiveNodeTooltip(activeNodeTooltip === 'server' ? null : 'server')}
+              className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-none"
+            >
+              <div
+                className="w-13 h-13 rounded-2xl flex items-center justify-center border shadow-xs transition-transform group-hover:scale-105"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border-subtle)',
+                  color: 'var(--voco-accent)',
+                }}
+              >
+                <Server className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-1.5">
+                Server
+              </span>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-400 -mt-0.5">
+                Render
+              </span>
+              <div className={`mt-1 flex items-center gap-1 text-[10px] font-semibold ${serverNodeStatus.color}`}>
+                <serverNodeStatus.icon className={`w-3 h-3 ${isChecking ? 'animate-spin' : ''}`} />
+                <span>{serverNodeStatus.label}</span>
+              </div>
+            </button>
+
+            {/* Node 3: AI */}
+            <button
+              type="button"
+              onClick={() => setActiveNodeTooltip(activeNodeTooltip === 'ai' ? null : 'ai')}
+              className="relative z-10 flex flex-col items-center group cursor-pointer focus:outline-none"
+            >
+              <div
+                className="w-13 h-13 rounded-2xl flex items-center justify-center border shadow-xs transition-transform group-hover:scale-105"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border-subtle)',
+                  color: 'var(--voco-accent)',
+                }}
+              >
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-1.5">
+                AI
+              </span>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-400 -mt-0.5">
+                Groq
+              </span>
+              <div className={`mt-1 flex items-center gap-1 text-[10px] font-semibold ${aiNodeStatus.color}`}>
+                <aiNodeStatus.icon className="w-3 h-3" />
+                <span>{aiNodeStatus.label}</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Single-sentence Node Callout on Tap (max 12 words) */}
+          {activeNodeTooltip && (
+            <div
+              className="p-2.5 rounded-xl text-xs font-semibold text-center border animate-fade-in flex items-center justify-between"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface)',
+                borderColor: 'var(--voco-border-subtle)',
+                color: 'var(--voco-text-secondary)',
+              }}
+            >
+              <span className="w-full text-center">
+                {activeNodeTooltip === 'phone' && 'Your words are saved here. Works offline.'}
+                {activeNodeTooltip === 'server' && 'Keeps the AI key safe and private.'}
+                {activeNodeTooltip === 'ai' && 'Writes definitions, examples and practice stories.'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveNodeTooltip(null)}
+                className="p-1 -mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                aria-label="Close tooltip"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Primary Status Pill & Action Buttons */}
+          <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] space-y-2.5">
+            <div className="flex items-center justify-center">
+              <span
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${
+                  isOffline
+                    ? 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-300 dark:border-zinc-700'
+                    : isChecking
+                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                      : isWaking
+                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                        : isAiProblem
+                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                          : isDown
+                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800'
+                }`}
+              >
+                {isChecking ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin text-blue-600" />
+                ) : isWaking ? (
+                  <Clock className="w-3.5 h-3.5 mr-1.5 text-amber-600 animate-pulse" />
+                ) : isDown ? (
+                  <AlertTriangle className="w-3.5 h-3.5 mr-1.5 text-rose-500" />
+                ) : isAiProblem ? (
+                  <KeyRound className="w-3.5 h-3.5 mr-1.5 text-amber-600" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
+                )}
+                <span>{serverSummary}</span>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onCheckBackend}
+                disabled={isChecking}
+                className="py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 border disabled:opacity-50"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border-subtle)',
+                  color: 'var(--voco-text-primary)',
+                }}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
+                <span>Check Status</span>
+              </button>
+
+              {(isWaking || isDown) && (
+                <button
+                  type="button"
+                  onClick={onCheckBackend}
+                  className="py-2.5 px-4 rounded-xl text-xs font-bold text-white transition-all flex items-center justify-center space-x-2 shadow-xs"
+                  style={{ backgroundColor: 'var(--voco-accent)' }}
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>Wake Server</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Why the Server Sleeps: 3-step Timeline ── */}
+        <div
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all space-y-3"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider">
+            <span>Sleep Schedule</span>
+            <span className="text-indigo-600 dark:text-[#8875F5]">Free Cloud Tier</span>
+          </div>
+
+          {/* 3-Step Horizontal Timeline */}
+          <div className="grid grid-cols-3 gap-2 text-center pt-1">
+            <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-200/80 dark:border-[#2E3341]">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-[#28C995] block">
+                1. Active
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                Ready in ms
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-200/80 dark:border-[#2E3341]">
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 block">
+                2. Idle 15m
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                No requests
+              </span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-200/80 dark:border-[#2E3341]">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-zinc-400 block">
+                3. Sleeping
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                Conserves power
+              </span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-500 dark:text-zinc-400 text-center">
+            First request after sleep takes up to a minute.
+          </p>
+
+          <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] flex items-center justify-between text-[11px] font-medium text-slate-600 dark:text-zinc-300">
+            <span>Keep-alive: every 10 min</span>
+            <span className="text-slate-400 dark:text-zinc-400">
+              Last check: {formatTime(backendStatus?.lastPingAt)}
             </span>
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
+        </div>
+
+        {/* ── Telemetry Compact Row (3 Chips) ── */}
+        <div className="grid grid-cols-3 gap-2">
+          <div
+            className="p-3 rounded-2xl border text-center transition-all"
+            style={{
+              backgroundColor: 'var(--voco-bg-card)',
+              borderColor: 'var(--voco-border-subtle)',
+            }}
+          >
+            <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 block">
+              Response
+            </span>
+            <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-0.5 block truncate">
+              {backendStatus?.responseTimeMs !== undefined ? `${backendStatus.responseTimeMs}ms` : 'Not yet'}
+            </span>
+          </div>
+
+          <div
+            className="p-3 rounded-2xl border text-center transition-all"
+            style={{
+              backgroundColor: 'var(--voco-bg-card)',
+              borderColor: 'var(--voco-border-subtle)',
+            }}
+          >
+            <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 block">
+              Running
+            </span>
+            <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-0.5 block truncate">
+              {formatUptime(backendStatus?.uptimeSeconds)}
+            </span>
+          </div>
+
+          <div
+            className="p-3 rounded-2xl border text-center transition-all"
+            style={{
+              backgroundColor: 'var(--voco-bg-card)',
+              borderColor: 'var(--voco-border-subtle)',
+            }}
+          >
+            <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-400 block">
+              Last Check
+            </span>
+            <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 mt-0.5 block truncate">
+              {formatTime(backendStatus?.lastPingAt)}
+            </span>
+          </div>
+        </div>
+
+        {/* Status Guide Bottom Sheet Modal */}
+        {showServerLegend && (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in"
+            onClick={() => setShowServerLegend(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl p-4 border shadow-xl space-y-3 animate-fade-in-up"
+              style={{
+                backgroundColor: 'var(--voco-bg-card)',
+                borderColor: 'var(--voco-border)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2E3341]">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Status Legend
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowServerLegend(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Online</span>
+                  </div>
+                  <span className="text-slate-500 dark:text-zinc-400">Ready</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Waking</span>
+                  </div>
+                  <span className="text-slate-500 dark:text-zinc-400">Starting up</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Down</span>
+                  </div>
+                  <span className="text-slate-500 dark:text-zinc-400">Offline or sleeping</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">AI Problem</span>
+                  </div>
+                  <span className="text-slate-500 dark:text-zinc-400">Key error</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Checking</span>
+                  </div>
+                  <span className="text-slate-500 dark:text-zinc-400">Verifying</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: REMINDERS (Visual Flow, Intervals, Start/Stop)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'reminders') {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
               Reminders
             </h3>
-            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
-              Intervals &amp; flow
-            </p>
           </div>
-        </button>
-
-        {/* Tile 2: Background Activity */}
-        <button
-          type="button"
-          onClick={() => setActiveSection('background')}
-          className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
-            activeSection === 'background' || activeSection === 'all'
-              ? 'border-emerald-500 dark:border-[#28C995] ring-2 ring-emerald-500/30 bg-emerald-50/40 dark:bg-[#252834]'
-              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
-          }`}
-        >
-          <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#28C995]/20 text-emerald-600 dark:text-[#28C995] flex items-center justify-center">
-              <BatteryCharging className="w-4 h-4" />
-            </div>
-            {/* Visual status indicator */}
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+              remindersActive
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
+                : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
             <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                allBackgroundReady
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
-                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/80'
+              className={`w-2 h-2 rounded-full mr-1.5 ${
+                remindersActive ? 'bg-[#28C995] animate-pulse' : 'bg-slate-400 dark:bg-zinc-500'
               }`}
+            />
+            {remindersActive ? 'Running' : 'Stopped'}
+          </span>
+        </div>
+
+        {/* ── 4-Step Horizontal Diagram ── */}
+        <div
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all space-y-2.5"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider text-center">
+            Practice Cycle
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5 items-center">
+            <div
+              className="p-2 rounded-xl flex flex-col items-center justify-center text-center transition-all border"
+              style={{
+                backgroundColor: remindersActive ? 'var(--voco-accent-soft)' : 'var(--voco-bg-surface)',
+                borderColor: remindersActive ? 'var(--voco-accent)' : 'var(--voco-border-subtle)',
+                color: remindersActive ? 'var(--voco-accent)' : 'var(--voco-text-muted)',
+              }}
             >
-              {allBackgroundReady ? (
+              <Play className="w-3.5 h-3.5 mb-1" />
+              <span className="text-[10px] font-bold">1. Start</span>
+            </div>
+
+            <div
+              className="p-2 rounded-xl flex flex-col items-center justify-center text-center transition-all border"
+              style={{
+                backgroundColor: remindersActive ? 'var(--voco-accent-soft)' : 'var(--voco-bg-surface)',
+                borderColor: remindersActive ? 'var(--voco-accent)' : 'var(--voco-border-subtle)',
+                color: remindersActive ? 'var(--voco-accent)' : 'var(--voco-text-muted)',
+              }}
+            >
+              <Clock className="w-3.5 h-3.5 mb-1" />
+              <span className="text-[10px] font-bold">{reminderInterval}m</span>
+            </div>
+
+            <div
+              className="p-2 rounded-xl flex flex-col items-center justify-center text-center transition-all border"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface)',
+                borderColor: 'var(--voco-border-subtle)',
+                color: 'var(--voco-text-secondary)',
+              }}
+            >
+              <Bell className="w-3.5 h-3.5 mb-1 text-amber-500" />
+              <span className="text-[10px] font-bold">Alert</span>
+            </div>
+
+            <div
+              className="p-2 rounded-xl flex flex-col items-center justify-center text-center transition-all border"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface)',
+                borderColor: 'var(--voco-border-subtle)',
+                color: 'var(--voco-text-secondary)',
+              }}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 mb-1 text-emerald-500" />
+              <span className="text-[10px] font-bold">Quiz</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Interval Selection ── */}
+        <div
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all space-y-2.5"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-400" />
+              Reminder Interval
+            </span>
+            <span className="font-bold" style={{ color: 'var(--voco-accent)' }}>
+              Every {reminderInterval} min
+            </span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {PRESET_INTERVALS.map((preset) => {
+              const isSelected = reminderInterval === preset;
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => onChangeInterval(preset)}
+                  className={`py-2 text-center text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                    isSelected ? 'text-white shadow-xs scale-[1.02]' : 'border'
+                  }`}
+                  style={{
+                    backgroundColor: isSelected ? 'var(--voco-accent)' : 'var(--voco-bg-surface)',
+                    borderColor: isSelected ? 'var(--voco-accent)' : 'var(--voco-border-subtle)',
+                    color: isSelected ? '#FFFFFF' : 'var(--voco-text-secondary)',
+                  }}
+                >
+                  {preset}m
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Large Start / Stop Button ── */}
+        <div>
+          {remindersActive ? (
+            <button
+              type="button"
+              onClick={onStopReminders}
+              className="w-full py-3 px-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
+            >
+              <Square className="w-4 h-4 fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400" />
+              <span>Stop Practice Reminders</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onStartReminders}
+              className="w-full py-3 px-4 rounded-xl text-white text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
+              style={{ backgroundColor: 'var(--voco-accent)' }}
+            >
+              <Play className="w-4 h-4 fill-white text-white" />
+              <span>Start Practice Reminders</span>
+            </button>
+          )}
+        </div>
+
+        {/* ── Sound & Vibration Preference ── */}
+        <div
+          className="p-3.5 rounded-2xl border transition-all flex items-center justify-between"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center space-x-2.5">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface)',
+                color: 'var(--voco-text-secondary)',
+              }}
+            >
+              <Volume2 className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                Sound &amp; Vibration
+              </h4>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                Chimes, vibration pattern &amp; lockscreen
+              </p>
+            </div>
+          </div>
+          {native ? (
+            <button
+              type="button"
+              onClick={() => openChannelSettings()}
+              className="text-xs font-bold hover:underline"
+              style={{ color: 'var(--voco-accent)' }}
+            >
+              Configure
+            </button>
+          ) : (
+            <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+              Browser
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: SCHEDULE (24h Bar, Start/Stop Pickers, Reliability Modal)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'schedule') {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+              Daily Schedule
+            </h3>
+          </div>
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+              scheduleStatus.state === 'active'
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
+                : scheduleStatus.state === 'paused'
+                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/80'
+                  : scheduleStatus.state === 'scheduled'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-[#8875F5] border-indigo-200 dark:border-indigo-800/60'
+                    : 'bg-slate-100 dark:bg-zinc-850 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
+            }`}
+          >
+            {scheduleStatus.state === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-[#28C995] mr-1 animate-pulse" />}
+            {scheduleStatus.label}
+          </span>
+        </div>
+
+        {/* ── 24-Hour Visual Bar ── */}
+        <div
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all space-y-2.5"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider">
+            <span>24h Timeline</span>
+            <span style={{ color: 'var(--voco-accent)' }}>
+              {formatTime12h(scheduleConfig.startTime)} – {formatTime12h(scheduleConfig.endTime)}
+            </span>
+          </div>
+
+          {/* Timeline Bar */}
+          <div className="relative w-full h-4 rounded-full bg-slate-100 dark:bg-[#15171E] border border-slate-200 dark:border-[#2E3341] overflow-hidden">
+            {scheduleConfig.enabled && !isEqualTime && (
+              isOvernight ? (
                 <>
-                  <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
-                  Ready
+                  {/* Segment from start to end of day */}
+                  <div
+                    className="absolute top-0 bottom-0 transition-all opacity-85"
+                    style={{
+                      left: `${startPct}%`,
+                      right: '0%',
+                      backgroundColor: 'var(--voco-accent)',
+                    }}
+                  />
+                  {/* Segment from start of day to stop */}
+                  <div
+                    className="absolute top-0 bottom-0 transition-all opacity-85"
+                    style={{
+                      left: '0%',
+                      width: `${endPct}%`,
+                      backgroundColor: 'var(--voco-accent)',
+                    }}
+                  />
                 </>
               ) : (
-                <>
-                  <AlertTriangle className="w-2.5 h-2.5 mr-1" />
-                  Action
-                </>
-              )}
-            </span>
+                <div
+                  className="absolute top-0 bottom-0 transition-all opacity-85"
+                  style={{
+                    left: `${startPct}%`,
+                    width: `${Math.max(2, endPct - startPct)}%`,
+                    backgroundColor: 'var(--voco-accent)',
+                  }}
+                />
+              )
+            )}
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
-              Background
-            </h3>
-            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
-              Battery &amp; wakeup
-            </p>
-          </div>
-        </button>
 
-        {/* Tile 3: Data & Backup */}
-        <button
-          type="button"
-          onClick={() => setActiveSection('data')}
-          className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
-            activeSection === 'data' || activeSection === 'all'
-              ? 'border-sky-500 dark:border-sky-400 ring-2 ring-sky-500/30 bg-sky-50/40 dark:bg-[#252834]'
-              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
-          }`}
-        >
-          <div className="flex items-start justify-between w-full mb-2">
-            <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-              <Database className="w-4 h-4" />
-            </div>
-            {/* Visual status indicator */}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800/80">
-              {totalWords} Words
-            </span>
+          {/* Time markers (12 AM, 6 AM, 12 PM, 6 PM, 12 AM) */}
+          <div className="flex justify-between text-[9px] font-semibold text-slate-400 dark:text-zinc-500 px-0.5">
+            <span>12 AM</span>
+            <span>6 AM</span>
+            <span>12 PM</span>
+            <span>6 PM</span>
+            <span>12 AM</span>
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
+        </div>
+
+        {/* ── Schedule Configuration Controls ── */}
+        <div
+          className="p-3.5 sm:p-4 rounded-2xl border transition-all space-y-3.5"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          {/* Top Row: Master Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: 'var(--voco-accent-soft)',
+                  color: 'var(--voco-accent)',
+                }}
+              >
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Automatic Daily Schedule
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Starts in morning &amp; stops at night
+                </p>
+              </div>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scheduleConfig.enabled}
+                onChange={(e) => handleToggleSchedule(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div
+                className={`w-9 h-5 rounded-full peer transition-colors relative ${
+                  scheduleConfig.enabled ? 'bg-[#6554F5]' : 'bg-slate-300 dark:bg-zinc-700'
+                }`}
+                style={scheduleConfig.enabled ? { backgroundColor: 'var(--voco-accent)' } : undefined}
+              >
+                <div
+                  className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${
+                    scheduleConfig.enabled ? 'transform translate-x-4' : ''
+                  }`}
+                />
+              </div>
+            </label>
+          </div>
+
+          {scheduleConfig.enabled && (
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-[#2E3341] animate-fade-in">
+              {/* Start & Stop Time Pickers */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-200/80 dark:border-[#2E3341]">
+                  <label className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 flex items-center gap-1 mb-1">
+                    <Sun className="w-3 h-3 text-amber-500" />
+                    Start Morning
+                  </label>
+                  <input
+                    type="time"
+                    value={scheduleConfig.startTime}
+                    onChange={(e) => handleUpdateTime('startTime', e.target.value)}
+                    className="w-full text-xs font-bold bg-transparent text-slate-800 dark:text-zinc-100 border-none outline-hidden p-0 cursor-pointer"
+                  />
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#15171E] border border-slate-200/80 dark:border-[#2E3341]">
+                  <label className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 flex items-center gap-1 mb-1">
+                    <Moon className="w-3 h-3 text-indigo-400" />
+                    Stop Night
+                  </label>
+                  <input
+                    type="time"
+                    value={scheduleConfig.endTime}
+                    onChange={(e) => handleUpdateTime('endTime', e.target.value)}
+                    className="w-full text-xs font-bold bg-transparent text-slate-800 dark:text-zinc-100 border-none outline-hidden p-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Day selector chips */}
+              <div>
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 block mb-1.5">
+                  Active Days
+                </span>
+                <div className="grid grid-cols-7 gap-1">
+                  {DAY_CHIPS.map((chip) => {
+                    const isSelected = (scheduleConfig.days || []).includes(chip.id);
+                    return (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => handleToggleDay(chip.id)}
+                        className={`py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          isSelected
+                            ? 'text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-[#191C23] text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700 border border-slate-200/80 dark:border-[#303541]'
+                        }`}
+                        style={isSelected ? { backgroundColor: 'var(--voco-accent)' } : undefined}
+                        title={chip.full}
+                      >
+                        {chip.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Notify on Start/End toggle */}
+              <div className="flex items-center justify-between pt-1">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                    Notify me when Voco starts and ends
+                  </p>
+                  <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                    Low-noise reminder status alerts
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={scheduleConfig.notifyOnStartEnd}
+                  onChange={(e) => handleToggleNotify(e.target.checked)}
+                  className="w-4 h-4 rounded text-[#6554F5] focus:ring-0 cursor-pointer"
+                  style={{ accentColor: 'var(--voco-accent)' }}
+                />
+              </div>
+
+              {/* Summary line */}
+              <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] flex items-center justify-between text-[10px]">
+                <span className="text-slate-600 dark:text-zinc-300 font-medium truncate">
+                  {scheduleStatus.summary}
+                </span>
+                {scheduleSaveStatus && (
+                  <span className="text-emerald-600 dark:text-[#28C995] font-semibold shrink-0 ml-2">
+                    {scheduleSaveStatus}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Short Reliability Row (Opens Bottom Sheet, No Inline Paragraph) ── */}
+        {native && (
+          <div
+            className="p-3.5 rounded-2xl border transition-all flex items-center justify-between"
+            style={{
+              backgroundColor: 'var(--voco-bg-card)',
+              borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+            }}
+          >
+            <div className="flex items-center space-x-2.5">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  color: 'var(--voco-text-secondary)',
+                }}
+              >
+                <BatteryCharging className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Alarm Reliability
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Autostart and battery guide
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBatteryGuide(true)}
+              className="text-xs font-bold hover:underline"
+              style={{ color: 'var(--voco-accent)' }}
+            >
+              Keep Alarms Reliable
+            </button>
+          </div>
+        )}
+
+        {/* Battery Guide Bottom Sheet */}
+        {showBatteryGuide && (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in"
+            onClick={() => setShowBatteryGuide(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl p-4 border shadow-xl space-y-3 animate-fade-in-up"
+              style={{
+                backgroundColor: 'var(--voco-bg-card)',
+                borderColor: 'var(--voco-border)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2E3341]">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Reliable Alarm Delivery
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowBatteryGuide(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-zinc-300 leading-snug">
+                On Xiaomi, Samsung, Realme, Oppo, and Vivo devices, ensure <strong>Autostart</strong> and <strong>Unrestricted Battery</strong> are enabled for Voco so alarms wake on time when the app is closed.
+              </p>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBatteryGuide(false);
+                    openBatterySettings();
+                  }}
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-xs"
+                  style={{ backgroundColor: 'var(--voco-accent)' }}
+                >
+                  Open Battery Settings
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: THEMES (8 Instant Themes Grid)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'themes') {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+              App Themes
+            </h3>
+          </div>
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border"
+            style={{
+              backgroundColor: 'var(--voco-accent-soft)',
+              color: 'var(--voco-accent)',
+              borderColor: 'var(--voco-accent-border)',
+            }}
+          >
+            {currentTheme.name}
+          </span>
+        </div>
+
+        {/* 8 Themes 2-column grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {THEME_LIST.map((t) => {
+            const isSelected = t.id === theme;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onSelectTheme(t.id)}
+                aria-pressed={isSelected}
+                className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${
+                  isSelected ? 'shadow-md ring-2' : 'hover:shadow-xs'
+                }`}
+                style={{
+                  backgroundColor: t.colors.bgCard,
+                  borderColor: isSelected ? t.colors.accent : t.colors.border,
+                  boxShadow: isSelected ? `0 0 0 2px ${t.colors.accent}40` : undefined,
+                }}
+              >
+                <div className="flex items-center justify-between mb-2.5">
+                  {/* Swatches */}
+                  <div className="flex items-center space-x-1.5 p-1 rounded-lg bg-slate-100/80 dark:bg-black/30 border border-slate-200/60 dark:border-white/10">
+                    {t.previewColors.map((hex, idx) => (
+                      <span
+                        key={idx}
+                        className="w-4 h-4 rounded-full border border-black/10 dark:border-white/20 shadow-2xs shrink-0"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+
+                  {isSelected ? (
+                    <span
+                      className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
+                      style={{ backgroundColor: t.colors.accent }}
+                    >
+                      <CheckCircle2 className="w-3 h-3 text-white" />
+                      <span>Active</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="text-[10px] font-medium px-2 py-0.5 rounded-full border opacity-70 group-hover:opacity-100 transition-opacity"
+                      style={{
+                        color: t.colors.textMuted,
+                        borderColor: t.colors.borderSubtle,
+                      }}
+                    >
+                      {t.isDark ? 'Dark' : 'Light'}
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <h4
+                    className="text-xs font-bold leading-tight"
+                    style={{ color: t.colors.textPrimary }}
+                  >
+                    {t.name}
+                  </h4>
+                  <p
+                    className="text-[10px] mt-0.5 line-clamp-1 leading-snug"
+                    style={{ color: t.colors.textMuted }}
+                  >
+                    {t.subtitle}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: DATA & BACKUP (Export, Import, Add-by-text)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'data') {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
               Data &amp; Backup
             </h3>
-            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
-              Export, import &amp; text
-            </p>
           </div>
-        </button>
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border"
+            style={{
+              backgroundColor: 'var(--voco-bg-surface)',
+              color: 'var(--voco-text-secondary)',
+              borderColor: 'var(--voco-border-subtle)',
+            }}
+          >
+            {totalWords} Words
+          </span>
+        </div>
 
-        {/* Tile 4: App Themes */}
+        {/* Storage Summary */}
+        <div
+          className="p-3.5 rounded-2xl border transition-all space-y-1"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-zinc-100">
+            <span>Local Storage</span>
+            <span className="text-emerald-600 dark:text-[#28C995] font-semibold">Ready</span>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-snug">
+            All your vocabulary words are saved securely in your device storage and work offline.
+          </p>
+        </div>
+
+        {/* Backup Controls Actions */}
+        <BackupControls
+          totalWords={totalWords}
+          onRefreshWords={onRefreshWords}
+          onStatusChange={onStatusChange}
+        />
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SUB-PAGE: DEVICE & BATTERY (3-Item Checklist)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (subPage === 'device') {
+    const isNotifOk = permission === 'granted';
+    const isExactOk = !native || exactAlarmStatus === 'granted';
+
+    return (
+      <div className="space-y-4 animate-fade-in">
+        {/* Sub-page Header */}
+        <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-[#2E3341]">
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-2 -ml-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+              Device &amp; Battery
+            </h3>
+          </div>
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+              isNotifOk && isExactOk
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
+                : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60'
+            }`}
+          >
+            {isNotifOk && isExactOk ? 'Ready' : 'Needs Setup'}
+          </span>
+        </div>
+
+        {/* 3-Item Checklist */}
+        <div
+          className="rounded-2xl border divide-y transition-all overflow-hidden"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          {/* Item 1: Notifications */}
+          <div className="p-3.5 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  isNotifOk
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
+                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {isNotifOk ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Notifications Allowed
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Delivers vocabulary flashcards
+                </p>
+              </div>
+            </div>
+            {!isNotifOk && (
+              <button
+                type="button"
+                onClick={onRequestPermission}
+                className="px-2.5 py-1 rounded-lg text-white font-bold text-xs shadow-xs"
+                style={{ backgroundColor: 'var(--voco-accent)' }}
+              >
+                Enable
+              </button>
+            )}
+          </div>
+
+          {/* Item 2: Exact Alarms */}
+          <div className="p-3.5 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  isExactOk
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
+                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {isExactOk ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Exact Alarms Allowed
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Wakes reminders on schedule
+                </p>
+              </div>
+            </div>
+            {!isExactOk && (
+              <button
+                type="button"
+                onClick={() => openExactAlarmSettings()}
+                className="px-2.5 py-1 rounded-lg text-white font-bold text-xs shadow-xs bg-amber-600 hover:bg-amber-700"
+              >
+                Allow
+              </button>
+            )}
+          </div>
+
+          {/* Item 3: Battery Unrestricted */}
+          <div className="p-3.5 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  color: 'var(--voco-text-secondary)',
+                }}
+              >
+                <BatteryCharging className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Battery Unrestricted
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Prevents system from stopping alarms
+                </p>
+              </div>
+            </div>
+            {native ? (
+              <button
+                type="button"
+                onClick={() => openBatterySettings()}
+                className="px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  borderColor: 'var(--voco-border-subtle)',
+                  color: 'var(--voco-text-primary)',
+                }}
+              >
+                Configure
+              </button>
+            ) : (
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+                Browser
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SETTINGS HOME: SHORT PROGRESSIVE DISCLOSURE OVERVIEW
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  return (
+    <div className="space-y-4 animate-fade-in pb-4">
+      {/* ── Top Status Strip ── */}
+      <div
+        className="p-3.5 rounded-2xl border transition-all flex items-center justify-between shadow-2xs"
+        style={{
+          backgroundColor: 'var(--voco-bg-surface, var(--voco-card-bg))',
+          borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+        }}
+      >
+        <div className="flex items-center space-x-2">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              !isOnline || backendStatus?.state === 'offline'
+                ? 'bg-slate-400'
+                : backendStatus?.state === 'waking' || backendStatus?.state === 'ai_problem'
+                  ? 'bg-amber-400'
+                  : backendStatus?.state === 'down'
+                    ? 'bg-rose-500'
+                    : 'bg-emerald-500'
+            }`}
+          />
+          <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+            {serverSummary}
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-600 dark:text-zinc-300">
+          <Bell className="w-3.5 h-3.5" style={{ color: 'var(--voco-accent)' }} />
+          <span>{remindersActive ? `Running (${reminderInterval}m)` : 'Stopped'}</span>
+        </div>
+      </div>
+
+      {/* ── 6 Focused Tappable Rows ── */}
+      <div
+        className="rounded-2xl border divide-y transition-all overflow-hidden shadow-card"
+        style={{
+          backgroundColor: 'var(--voco-bg-card)',
+          borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+        }}
+      >
+        {/* Row 1: Server */}
         <button
           type="button"
-          onClick={() => setActiveSection('appearance')}
-          className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between shadow-card hover:shadow-card-hover ${
-            activeSection === 'appearance' || activeSection === 'all'
-              ? 'border-[#6554F5] dark:border-[#8875F5] ring-2 ring-[#6554F5]/30 bg-purple-50/40 dark:bg-[#252834]'
-              : 'border-slate-300 dark:border-[#3E4452] bg-white dark:bg-[#1B1D25] hover:border-slate-400 dark:hover:border-[#4F5568]'
-          }`}
-          style={
-            activeSection === 'appearance' || activeSection === 'all'
-              ? { borderColor: 'var(--voco-accent)' }
-              : undefined
-          }
+          onClick={() => openSubPage('server')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
         >
-          <div className="flex items-start justify-between w-full mb-2">
+          <div className="flex items-center space-x-3 min-w-0">
             <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+              }}
+            >
+              <Server className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                Server
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {serverSummary}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
+        </button>
+
+        {/* Row 2: Reminders */}
+        <button
+          type="button"
+          onClick={() => openSubPage('reminders')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+              }}
+            >
+              <Bell className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                Reminders
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {remindersSummary}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
+        </button>
+
+        {/* Row 3: Daily Schedule */}
+        <button
+          type="button"
+          onClick={() => openSubPage('schedule')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+              }}
+            >
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                Daily Schedule
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {scheduleSummary}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
+        </button>
+
+        {/* Row 4: App Themes */}
+        <button
+          type="button"
+          onClick={() => openSubPage('themes')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
               style={{
                 backgroundColor: 'var(--voco-accent-soft)',
                 color: 'var(--voco-accent)',
@@ -267,574 +1714,79 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <Palette className="w-4 h-4" />
             </div>
-            {/* Visual status indicator */}
-            <span
-              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors truncate max-w-[100px]"
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                App Themes
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {currentTheme.name} • 8 instant themes
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
+        </button>
+
+        {/* Row 5: Data & Backup */}
+        <button
+          type="button"
+          onClick={() => openSubPage('data')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
               style={{
                 backgroundColor: 'var(--voco-accent-soft)',
                 color: 'var(--voco-accent)',
-                borderColor: 'var(--voco-accent-border)',
               }}
             >
-              {currentTheme.name}
-            </span>
+              <Database className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                Data &amp; Backup
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {dataSummary}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
-              App Themes
-            </h3>
-            <p className="text-[10px] text-slate-500 dark:text-[#A5A8B5] mt-0.5 truncate">
-              8 instant themes
-            </p>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
+        </button>
+
+        {/* Row 6: Device & Battery */}
+        <button
+          type="button"
+          onClick={() => openSubPage('device')}
+          className="w-full p-3.5 flex items-center justify-between text-left transition-colors hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 cursor-pointer"
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: 'var(--voco-accent-soft)',
+                color: 'var(--voco-accent)',
+              }}
+            >
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-zinc-100 truncate">
+                Device &amp; Battery
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+                {deviceSummary}
+              </p>
+            </div>
           </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-zinc-500 shrink-0 ml-2" />
         </button>
       </div>
 
-      {/* ━━━━━━━━━━━━━━━━━━━━ BACKEND & AI CONNECTION CARD ━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1B1D25] border border-slate-300 dark:border-[#3E4452] shadow-card transition-colors">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8875F5] flex items-center justify-center">
-              <Server className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-slate-900 dark:text-[#F1F1F5] leading-tight">
-                Backend Service
-              </h3>
-              <p className="text-[10px] text-slate-400 dark:text-[#A5A8B5]">
-                voco-backend.onrender.com
-              </p>
-            </div>
-          </div>
-
-          {/* Status Badge */}
-          {!isOnline ? (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-              <WifiOff className="w-3 h-3 mr-1" />
-              Offline
-            </span>
-          ) : backendStatus?.state === 'checking' ? (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              Checking connection...
-            </span>
-          ) : backendStatus?.state === 'waking' ? (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-              <span className="relative flex h-2 w-2 mr-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-              </span>
-              Backend is waking up...
-            </span>
-          ) : backendStatus?.state === 'unavailable' ? (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-              <AlertTriangle className="w-3 h-3 mr-1 text-rose-500" />
-              Backend unavailable. Please try again.
-            </span>
-          ) : (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#28C995] border border-emerald-200 dark:border-emerald-800">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              Backend connected.
-            </span>
-          )}
-        </div>
-
-        <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] flex items-center justify-between text-[11px]">
-          <div className="text-slate-500 dark:text-[#A5A8B5] truncate text-[10px]">
-            {backendStatus?.model && backendStatus.reachable ? (
-              <span>Model: <code className="font-mono text-slate-700 dark:text-slate-300">{backendStatus.model}</code></span>
-            ) : (
-              <span>Local vocabulary and reminders always available offline.</span>
-            )}
-          </div>
-          {onCheckBackend && (
-            <button
-              type="button"
-              onClick={onCheckBackend}
-              disabled={backendStatus?.state === 'checking'}
-              className="inline-flex items-center text-[10px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline shrink-0 ml-2 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 mr-1 ${backendStatus?.state === 'checking' ? 'animate-spin' : ''}`} />
-              Check Status
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ━━━━━━━━━━━━━━━━━━━━ 2. NOTIFICATIONS & REMINDERS SECTION ━━━━━━━━━━━━━━━━━━━━ */}
-      {(activeSection === 'reminders' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center">
-                <Bell className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                  Notifications &amp; Reminders
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                  Visual practice flow, intervals &amp; status
-                </p>
-              </div>
-            </div>
-
-            {/* Clear Status Indicator */}
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                remindersActive
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                  : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
-              }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full mr-1.5 ${
-                  remindersActive ? 'bg-[#28C995] animate-pulse' : 'bg-slate-400 dark:bg-zinc-500'
-                }`}
-              />
-              {remindersActive ? 'Running' : 'Stopped'}
-            </span>
-          </div>
-
-          {/* ━━ VISUAL REMINDER FLOW DIAGRAM ━━ */}
-          <div className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-[#191C23] border border-slate-200/80 dark:border-[#303541] space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400">
-              <span>Visual Reminder Flow</span>
-              <span className="text-indigo-600 dark:text-[#8172F8]">Automatic Cycle</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1.5 items-center">
-              {/* Step 1: Start */}
-              <div
-                className={`p-2 rounded-xl flex flex-col items-center justify-center text-center transition-all ${
-                  remindersActive
-                    ? 'bg-indigo-50 dark:bg-[#6554F5]/20 text-[#6554F5] dark:text-[#8172F8] border border-indigo-200 dark:border-[#6554F5]/40'
-                    : 'bg-white dark:bg-zinc-900 text-slate-400 dark:text-zinc-500 border border-slate-200/80 dark:border-zinc-800'
-                }`}
-              >
-                <Play className="w-3.5 h-3.5 mb-1" />
-                <span className="text-[10px] font-bold">1. Start</span>
-              </div>
-
-              {/* Step 2: Interval */}
-              <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-center">
-                <Clock className="w-3.5 h-3.5 mb-1 text-[#6554F5] dark:text-[#8172F8]" />
-                <span className="text-[10px] font-bold">{reminderInterval}m Interval</span>
-              </div>
-
-              {/* Step 3: Notification */}
-              <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-center">
-                <Bell className="w-3.5 h-3.5 mb-1 text-amber-500" />
-                <span className="text-[10px] font-bold">Notification</span>
-              </div>
-
-              {/* Step 4: Quiz */}
-              <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-200 border border-slate-200/80 dark:border-zinc-800 flex flex-col items-center justify-center text-center">
-                <CheckCircle2 className="w-3.5 h-3.5 mb-1 text-emerald-600 dark:text-[#28C995]" />
-                <span className="text-[10px] font-bold">Answer Quiz</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ━━ INTERVAL SELECTION ━━ */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700 dark:text-zinc-200 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-zinc-400" />
-                Reminder Interval
-              </span>
-              <span className="font-bold text-[#6554F5] dark:text-[#8172F8]">
-                Every {reminderInterval} min
-              </span>
-            </div>
-
-            <div className="grid grid-cols-7 gap-1">
-              {PRESET_INTERVALS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => onChangeInterval(preset)}
-                  className={`py-2 text-center text-xs font-bold rounded-xl transition-all ${
-                    reminderInterval === preset
-                      ? 'bg-[#6554F5] text-white shadow-xs scale-[1.02]'
-                      : 'bg-slate-50 dark:bg-[#191C23] hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-[#303541]'
-                  }`}
-                >
-                  {preset}m
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* ━━ START / STOP REMINDERS BUTTON ━━ */}
-          <div className="pt-1">
-            {remindersActive ? (
-              <button
-                type="button"
-                onClick={onStopReminders}
-                className="w-full py-2.5 px-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-xs"
-              >
-                <Square className="w-3.5 h-3.5 fill-rose-600 text-rose-600 dark:fill-rose-400 dark:text-rose-400" />
-                <span>Stop Practice Reminders</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onStartReminders}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#6554F5] hover:bg-[#5243E4] active:bg-[#4334D0] text-white text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-xs"
-              >
-                <Play className="w-3.5 h-3.5 fill-white text-white" />
-                <span>Start Practice Reminders</span>
-              </button>
-            )}
-          </div>
-
-          {/* ━━ SOUND & VIBRATION PREFERENCES ━━ */}
-          <div className="pt-2 border-t border-slate-100 dark:border-[#292E38] flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-850 flex items-center justify-center text-slate-500 dark:text-zinc-400">
-                <Volume2 className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-700 dark:text-zinc-200">
-                  Sound &amp; Vibration
-                </p>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-500">
-                  Notification channel chimes &amp; haptics
-                </p>
-              </div>
-            </div>
-
-            {native ? (
-              <button
-                type="button"
-                onClick={() => openExactAlarmSettings()}
-                className="text-[11px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline"
-              >
-                Configure
-              </button>
-            ) : (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400">
-                Browser
-              </span>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ━━━━━━━━━━━━━━━━━━━━ 3. BACKGROUND ACTIVITY SECTION ━━━━━━━━━━━━━━━━━━━━ */}
-      {(activeSection === 'background' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#28C995]/15 text-emerald-600 dark:text-[#28C995] flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                  Background Activity
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                  Permissions for alarm delivery when app is closed
-                </p>
-              </div>
-            </div>
-
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                allBackgroundReady
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60'
-              }`}
-            >
-              {allBackgroundReady ? 'Ready' : 'Needs Setup'}
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {/* 1. Notification Permission */}
-            <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-[#191C23] border border-slate-200/80 dark:border-[#303541] flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                  Notification Permission
-                </p>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
-                  Popups and lock-screen practice cards
-                </p>
-              </div>
-
-              {permission === 'granted' ? (
-                <span className="inline-flex items-center text-xs font-bold text-emerald-600 dark:text-[#28C995]">
-                  <CheckCircle2 className="w-4 h-4 mr-1 text-[#28C995]" />
-                  Allowed
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onRequestPermission}
-                  className="px-3 py-1 rounded-lg bg-[#6554F5] hover:bg-[#5243E4] text-white text-xs font-semibold shadow-xs transition-colors"
-                >
-                  Enable
-                </button>
-              )}
-            </div>
-
-            {/* 2. Exact Alarm Permission */}
-            <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-[#191C23] border border-slate-200/80 dark:border-[#303541] flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                  Exact Alarm Permission
-                </p>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
-                  Precise minute-by-minute reminders
-                </p>
-              </div>
-
-              {native ? (
-                exactAlarmStatus === 'granted' ? (
-                  <span className="inline-flex items-center text-xs font-bold text-emerald-600 dark:text-[#28C995]">
-                    <CheckCircle2 className="w-4 h-4 mr-1 text-[#28C995]" />
-                    Allowed
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openExactAlarmSettings()}
-                    className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition-colors"
-                  >
-                    Allow
-                  </button>
-                )
-              ) : (
-                <span className="inline-flex items-center text-xs font-bold text-emerald-600 dark:text-[#28C995]">
-                  <CheckCircle2 className="w-4 h-4 mr-1 text-[#28C995]" />
-                  Browser
-                </span>
-              )}
-            </div>
-
-            {/* 3. Battery Optimization */}
-            <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-[#191C23] border border-slate-200/80 dark:border-[#303541] flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
-                  Battery Optimization
-                </p>
-                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
-                  Set to Unrestricted to prevent background sleep
-                </p>
-              </div>
-
-              {native ? (
-                <button
-                  type="button"
-                  onClick={() => openBatterySettings()}
-                  className="px-3 py-1 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-200 text-xs font-semibold transition-colors"
-                >
-                  Configure
-                </button>
-              ) : (
-                <span className="inline-flex items-center text-xs font-bold text-emerald-600 dark:text-[#28C995]">
-                  <CheckCircle2 className="w-4 h-4 mr-1 text-[#28C995]" />
-                  Active
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Optional Expandable Learn More */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowLearnMoreBg(!showLearnMoreBg)}
-              className="inline-flex items-center text-[11px] font-semibold text-[#6554F5] dark:text-[#8172F8] hover:underline"
-            >
-              <span>Learn more about background activity</span>
-              {showLearnMoreBg ? (
-                <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
-              )}
-            </button>
-
-            {showLearnMoreBg && (
-              <div className="mt-2 p-3 rounded-xl bg-slate-50/70 dark:bg-[#191C23] border border-slate-200/80 dark:border-[#303541] text-[11px] text-slate-600 dark:text-zinc-400 leading-relaxed animate-fade-in-up">
-                Voco uses Android&apos;s AlarmManager to schedule wakeup alarms directly. Reminders trigger precisely even when the device is asleep or when Voco is closed, without continuously running in the background.
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ━━━━━━━━━━━━━━━━━━━━ 4. DATA & BACKUP SECTION ━━━━━━━━━━━━━━━━━━━━ */}
-      {(activeSection === 'data' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-3.5 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-                <Database className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                  Data &amp; Backup
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                  Export, import and bulk text vocabulary
-                </p>
-              </div>
-            </div>
-
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60">
-              <HardDrive className="w-3 h-3 mr-1" />
-              IndexedDB
-            </span>
-          </div>
-
-          {/* Prominent Saved Words Counter Hero Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-indigo-50/40 dark:from-[#191C23] dark:to-[#191C23] border border-slate-200/80 dark:border-[#303541] flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-zinc-400">
-                Vocabulary Storage
-              </p>
-              <h4 className="text-2xl font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight mt-0.5">
-                {totalWords} <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Words Saved</span>
-              </h4>
-              <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                Persisted locally on device &amp; available offline
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-[#6554F5]/15 text-[#6554F5] dark:text-[#8172F8] flex items-center justify-center border border-indigo-100 dark:border-[#6554F5]/30 shrink-0">
-              <Database className="w-6 h-6" />
-            </div>
-          </div>
-
-          {/* Three Clear Visual Actions (Export, Import, Add Text) */}
-          <BackupControls
-            totalWords={totalWords}
-            onRefreshWords={onRefreshWords}
-            onStatusChange={onStatusChange}
-          />
-        </section>
-      )}
-
-      {/* ━━━━━━━━━━━━━━━━━━━━ 5. APP THEMES SECTION ━━━━━━━━━━━━━━━━━━━━ */}
-      {(activeSection === 'appearance' || activeSection === 'all') && (
-        <section className="bg-white dark:bg-[#1B1D25] rounded-2xl shadow-card border border-slate-300 dark:border-[#3E4452] p-4 sm:p-5 transition-colors space-y-4 animate-fade-in-up">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#2E3341] pb-3">
-            <div className="flex items-center space-x-2.5">
-              <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
-                style={{
-                  backgroundColor: 'var(--voco-accent-soft)',
-                  color: 'var(--voco-accent)',
-                }}
-              >
-                <Palette className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 tracking-tight">
-                  App Themes
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-400">
-                  Select from 8 crafted themes • Updates instantly
-                </p>
-              </div>
-            </div>
-
-            <span
-              className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-2xs"
-              style={{
-                backgroundColor: 'var(--voco-accent-soft)',
-                color: 'var(--voco-accent)',
-                borderColor: 'var(--voco-accent-border)',
-              }}
-            >
-              {currentTheme.name}
-            </span>
-          </div>
-
-          {/* 8 Themes Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {THEME_LIST.map((t) => {
-              const isSelected = t.id === theme;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onSelectTheme(t.id)}
-                  aria-pressed={isSelected}
-                  className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${
-                    isSelected
-                      ? 'shadow-md ring-2'
-                      : 'hover:border-slate-400 dark:hover:border-zinc-500 hover:shadow-xs'
-                  }`}
-                  style={{
-                    backgroundColor: t.colors.bgCard,
-                    borderColor: isSelected ? t.colors.accent : t.colors.border,
-                    boxShadow: isSelected ? `0 0 0 2px ${t.colors.accent}40` : undefined,
-                  }}
-                >
-                  {/* Top row: Swatches & Active Checkmark */}
-                  <div className="flex items-center justify-between mb-2.5">
-                    {/* 4-color palette swatch preview */}
-                    <div className="flex items-center space-x-1.5 p-1 rounded-lg bg-slate-100/80 dark:bg-black/30 border border-slate-200/60 dark:border-white/10">
-                      {t.previewColors.map((hex, idx) => (
-                        <span
-                          key={idx}
-                          className="w-4 h-4 rounded-full border border-black/10 dark:border-white/20 shadow-2xs shrink-0"
-                          style={{ backgroundColor: hex }}
-                          title={idx === 0 ? 'Background' : idx === 1 ? 'Card' : idx === 2 ? 'Accent' : 'Text'}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Active Checkmark or Theme Mode Pill */}
-                    {isSelected ? (
-                      <span
-                        className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
-                        style={{ backgroundColor: t.colors.accent }}
-                      >
-                        <CheckCircle2 className="w-3 h-3 text-white" />
-                        <span>Active</span>
-                      </span>
-                    ) : (
-                      <span
-                        className="text-[10px] font-medium px-2 py-0.5 rounded-full border opacity-70 group-hover:opacity-100 transition-opacity"
-                        style={{
-                          color: t.colors.textMuted,
-                          borderColor: t.colors.borderSubtle,
-                        }}
-                      >
-                        {t.isDark ? 'Dark' : 'Light'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Bottom row: Name & Subtitle */}
-                  <div>
-                    <h4
-                      className="text-xs font-bold leading-tight flex items-center justify-between"
-                      style={{ color: t.colors.textPrimary }}
-                    >
-                      <span>{t.name}</span>
-                    </h4>
-                    <p
-                      className="text-[10px] mt-0.5 line-clamp-1 leading-snug"
-                      style={{ color: t.colors.textMuted }}
-                    >
-                      {t.subtitle}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* ━━━━━━━━━━━━━━━━━━━━ 6. APP VERSION FOOTER ━━━━━━━━━━━━━━━━━━━━ */}
-      <div className="px-2 pt-2 text-center">
-        <p className="text-[11px] font-semibold text-slate-400 dark:text-zinc-500">
-          Voco Vocabulary Control Centre • v1.2.0
+      {/* App Version Footer */}
+      <div className="pt-2 text-center">
+        <p className="text-[10px] font-semibold text-slate-400 dark:text-zinc-500">
+          Voco Vocabulary • v1.2.0
         </p>
       </div>
     </div>

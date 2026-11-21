@@ -44,6 +44,21 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
             return;
         }
 
+        String action = intent != null ? intent.getAction() : null;
+
+        // ── Daily Schedule Triggers ──
+        if (VocoAlarmScheduler.ACTION_SCHEDULE_START.equals(action)) {
+            Log.d(TAG, "VocoAlarmReceiver: Received ACTION_SCHEDULE_START");
+            VocoAlarmScheduler.handleScheduleStart(context);
+            return;
+        }
+
+        if (VocoAlarmScheduler.ACTION_SCHEDULE_END.equals(action)) {
+            Log.d(TAG, "VocoAlarmReceiver: Received ACTION_SCHEDULE_END");
+            VocoAlarmScheduler.handleScheduleEnd(context);
+            return;
+        }
+
         long incomingGen = (intent != null) ? intent.getLongExtra(VocoAlarmScheduler.EXTRA_GENERATION, -1L) : -1L;
         Log.d(TAG, "VocoAlarmReceiver triggered with incoming generation: " + incomingGen);
 

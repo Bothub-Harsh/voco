@@ -17,6 +17,10 @@ const PORT = process.env.PORT || 3001;
 const rawEnvModel = process.env.GROQ_MODEL?.trim();
 const DEFAULT_MODEL = rawEnvModel || 'openai/gpt-oss-120b';
 
+const SERVER_START_TIME = new Date().toISOString();
+let lastSelfPingAt = null;
+let selfPingTimer = null;
+
 // Active Groq candidate models in fallback order (excluding decommissioned models)
 const CANDIDATE_MODELS = [
   DEFAULT_MODEL,
@@ -45,11 +49,18 @@ app.use(cors());
 app.use(express.json());
 
 // Health check endpoint for cloud platforms like Render
-app.get(['/api/health', '/healthz'], (req, res) => {
+app.get(['/health', '/api/health', '/healthz'], (req, res) => {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  const isConfigured = Boolean(apiKey && apiKey !== 'your_groq_api_key_here');
   res.status(200).json({
     status: 'ok',
     service: 'my-vocabulary-backend',
-    timestamp: new Date().toISOString(),
+    startTime: SERVER_START_TIME,
+    uptimeSeconds: Math.floor(process.uptime()),
+    serverTime: new Date().toISOString(),
+    configured: isConfigured,
+    model: DEFAULT_MODEL,
+    lastSelfPingAt: lastSelfPingAt || null,
   });
 });
 
@@ -58,8 +69,13 @@ app.get('/api/status', (req, res) => {
   const apiKey = process.env.GROQ_API_KEY?.trim();
   const isConfigured = Boolean(apiKey && apiKey !== 'your_groq_api_key_here');
   res.json({
+    status: 'ok',
     configured: isConfigured,
     model: DEFAULT_MODEL,
+    startTime: SERVER_START_TIME,
+    uptimeSeconds: Math.floor(process.uptime()),
+    serverTime: new Date().toISOString(),
+    lastSelfPingAt: lastSelfPingAt || null,
     message: isConfigured
       ? 'Groq API key is configured.'
       : 'GROQ_API_KEY not configured. Set your key in .env to add new words.',
@@ -1125,12 +1141,55 @@ const distPath = path.resolve(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/')) return next();
+    if (req.path.startsWith('/api/') || req.path === '/health' || req.path === '/healthz') return next();
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
+// ─── Reliable 10-Minute Self Keep-Alive Timer (Backup Method) ───
+function setupSelfKeepAlive() {
+  const externalUrl =
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.BACKEND_PUBLIC_URL ||
+    (process.env.NODE_ENV === 'production' ? 'https://voco-backend.onrender.com' : null);
+
+  if (!externalUrl) {
+    console.log('[Keep-Alive] No external URL configured for self-ping (local dev mode).');
+    return;
+  }
+
+  // Ensure only ONE timer ever runs, even across reloads or restarts
+  if (selfPingTimer) {
+    clearInterval(selfPingTimer);
+    selfPingTimer = null;
+  }
+
+  const PING_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes (strictly below 15-minute Render sleep threshold)
+  const targetHealthUrl = `${externalUrl.replace(/\/$/, '')}/health`;
+
+  console.log(`[Keep-Alive] Initialized 10-minute backup self-ping targeting: ${targetHealthUrl}`);
+
+  selfPingTimer = setInterval(async () => {
+    try {
+      const now = new Date().toISOString();
+      const res = await fetch(targetHealthUrl, {
+        method: 'GET',
+        headers: { 'User-Agent': 'Voco-Internal-Keepalive/1.0' },
+      });
+      lastSelfPingAt = now;
+      console.log(`[Keep-Alive] Ping sent at ${now} -> HTTP ${res.status}`);
+    } catch (err) {
+      console.warn(`[Keep-Alive] Self-ping warning: ${err.message}`);
+    }
+  }, PING_INTERVAL_MS);
+
+  if (selfPingTimer.unref) {
+    selfPingTimer.unref();
+  }
+}
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Backend Proxy] Listening on port ${PORT}`);
+  setupSelfKeepAlive();
 });
 

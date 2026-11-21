@@ -17,8 +17,14 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public class VocoAlarmScheduler {
     public static final String TAG = "VocoAlarmScheduler";
@@ -35,6 +41,26 @@ public class VocoAlarmScheduler {
     public static final String KEY_ROTATION_QUEUE = "rotation_queue"; // JSON array of word IDs for cycle
     public static final String KEY_SHOWN_IN_CYCLE = "shown_in_cycle"; // JSON array of word IDs already shown
     public static final String KEY_PENDING_QUEUE = "pending_notification_queue"; // JSON array of pending reminder quizzes
+    public static final String KEY_SELECTED_THEME = "selected_theme";
+
+    // Daily schedule keys & actions
+    public static final String KEY_SCHEDULE_ENABLED = "daily_schedule_enabled";
+    public static final String KEY_SCHEDULE_START_TIME = "daily_schedule_start_time"; // e.g. "08:00"
+    public static final String KEY_SCHEDULE_END_TIME = "daily_schedule_end_time";     // e.g. "21:00"
+    public static final String KEY_SCHEDULE_DAYS = "daily_schedule_days";             // e.g. "[1,2,3,4,5,6,7]" (1=Mon..7=Sun)
+    public static final String KEY_SCHEDULE_NOTIFY = "daily_schedule_notify";         // boolean
+    public static final String KEY_SCHEDULE_PAUSED_DATE = "daily_schedule_paused_date"; // "yyyy-MM-dd"
+
+    public static final String ACTION_SCHEDULE_START = "com.harsh.voco.SCHEDULE_START";
+    public static final String ACTION_SCHEDULE_END = "com.harsh.voco.SCHEDULE_END";
+
+    public static final String CHANNEL_SCHEDULE_ID = "voco_schedule";
+    public static final String CHANNEL_SCHEDULE_NAME = "Voco Daily Schedule";
+
+    public static final int ALARM_SCHEDULE_START_CODE = 44410;
+    public static final int ALARM_SCHEDULE_END_CODE = 44411;
+    public static final int NOTIFICATION_SCHEDULE_START_ID = 44412;
+    public static final int NOTIFICATION_SCHEDULE_END_ID = 44413;
 
     // Intent actions and extras
     public static final String ACTION_PRACTICE_REMINDER = "com.harsh.voco.PRACTICE_REMINDER";
@@ -65,6 +91,14 @@ public class VocoAlarmScheduler {
 
     public static SharedPreferences getPrefs(Context context) {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    public static String getSelectedTheme(Context context) {
+        return getPrefs(context).getString(KEY_SELECTED_THEME, "clean-light");
+    }
+
+    public static void setSelectedTheme(Context context, String themeId) {
+        getPrefs(context).edit().putString(KEY_SELECTED_THEME, themeId != null ? themeId : "clean-light").apply();
     }
 
     public static void createNotificationChannel(Context context) {
@@ -529,5 +563,483 @@ public class VocoAlarmScheduler {
 
     public static void showNotification(Context context, String wordId, String wordText) {
         showNotification(context, wordId, wordText, "Practice vocabulary meaning.", "", null, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // ── Automatic Daily Schedule System ─────────────────────────
+    // ─────────────────────────────────────────────────────────────
+
+    public static void createScheduleNotificationChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+
+            NotificationChannel existing = nm.getNotificationChannel(CHANNEL_SCHEDULE_ID);
+            if (existing == null) {
+                NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_SCHEDULE_ID,
+                    CHANNEL_SCHEDULE_NAME,
+                    NotificationManager.IMPORTANCE_DEFAULT
+                );
+                channel.setDescription("Voco daily schedule start and stop notifications");
+                channel.enableLights(true);
+                channel.setLightColor(Color.parseColor("#4F46E5"));
+                channel.enableVibration(true);
+                nm.createNotificationChannel(channel);
+                Log.d(TAG, "Notification channel created: " + CHANNEL_SCHEDULE_ID);
+            }
+        }
+    }
+
+    /**
+     * Shows a non-intrusive start or stop notification for the daily schedule.
+     * Tapping opens the main Voco application (MainActivity) directly.
+     * Does NOT open a flashcard popup and is NOT added to the quiz queue.
+     */
+    public static void showScheduleNotification(Context context, int notifId, String title, String message) {
+        createScheduleNotificationChannel(context);
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pi = PendingIntent.getActivity(context, notifId, intent, flags);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_SCHEDULE_ID)
+            .setSmallIcon(R.drawable.ic_stat_voco)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setColor(Color.parseColor("#4F46E5"))
+            .setContentIntent(pi);
+
+        nm.notify(notifId, builder.build());
+        Log.d(TAG, "Delivered schedule notification: " + title + " -> " + message);
+    }
+
+    /**
+     * Starts the recurring reminder alarm chain with a fresh session generation token.
+     */
+    public static long startReminderChain(Context context, int intervalMins, String wordsJson) {
+        if (intervalMins < 1) intervalMins = 1;
+        createNotificationChannel(context);
+
+        // Cancel previous alarms to avoid duplicates
+        cancelAlarms(context);
+
+        long generation = System.currentTimeMillis();
+        SharedPreferences.Editor editor = getPrefs(context).edit();
+        editor.putBoolean(KEY_ENABLED, true);
+        editor.putInt(KEY_INTERVAL, intervalMins);
+        if (wordsJson != null && !wordsJson.isEmpty()) {
+            editor.putString(KEY_WORDS, wordsJson);
+        }
+        editor.putLong(KEY_SCHEDULE_GENERATION, generation);
+        editor.apply();
+
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long intervalMs = intervalMins * 60 * 1000L;
+        long targetElapsed = nowElapsed + intervalMs;
+
+        scheduleNextAlarm(context, targetElapsed, intervalMins, generation);
+        Log.d(TAG, "Started reminder chain with interval=" + intervalMins + "m, gen=" + generation);
+        return generation;
+    }
+
+    /**
+     * Sets up exact alarms for DAY_START and DAY_END.
+     * Evaluates current time relative to the scheduled window:
+     * - If inside the window and not paused today: starts reminders immediately.
+     * - Schedules the upcoming alarms with unique request codes.
+     */
+    public static void setupDailySchedule(Context context) {
+        SharedPreferences prefs = getPrefs(context);
+        boolean enabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false);
+        if (!enabled) {
+            cancelDailySchedule(context);
+            return;
+        }
+
+        String startTimeStr = prefs.getString(KEY_SCHEDULE_START_TIME, "08:00");
+        String endTimeStr = prefs.getString(KEY_SCHEDULE_END_TIME, "21:00");
+        String daysJson = prefs.getString(KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
+
+        int[] startParts = parseHourMinute(startTimeStr, 8, 0);
+        int[] endParts = parseHourMinute(endTimeStr, 21, 0);
+        Set<Integer> allowedDays = parseDaysSet(daysJson);
+
+        Calendar nowCal = Calendar.getInstance();
+        boolean isInside = isInsideScheduleWindow(nowCal, startParts[0], startParts[1], endParts[0], endParts[1], allowedDays);
+        String todayDateStr = getTodayDateString();
+        String pausedDate = prefs.getString(KEY_SCHEDULE_PAUSED_DATE, null);
+        boolean isPausedToday = todayDateStr.equals(pausedDate);
+
+        Log.d(TAG, "setupDailySchedule: isInside=" + isInside + ", isPausedToday=" + isPausedToday);
+
+        if (isInside) {
+            // Currently within active schedule window
+            if (!isPausedToday) {
+                boolean running = prefs.getBoolean(KEY_ENABLED, false);
+                if (!running) {
+                    int intervalMins = prefs.getInt(KEY_INTERVAL, 5);
+                    String wordsJson = prefs.getString(KEY_WORDS, "[]");
+                    startReminderChain(context, intervalMins, wordsJson);
+                }
+            }
+
+            // Schedule end alarm for the current window end
+            long nextEndMs = computeNextWindowEnd(nowCal, startParts[0], startParts[1], endParts[0], endParts[1]);
+            scheduleScheduleAlarm(context, ALARM_SCHEDULE_END_CODE, ACTION_SCHEDULE_END, nextEndMs);
+
+            // Schedule next start alarm for the subsequent window
+            long nextStartMs = computeNextOccurrence(nowCal, startParts[0], startParts[1], allowedDays, false);
+            scheduleScheduleAlarm(context, ALARM_SCHEDULE_START_CODE, ACTION_SCHEDULE_START, nextStartMs);
+        } else {
+            // Outside active schedule window
+            long nextStartMs = computeNextOccurrence(nowCal, startParts[0], startParts[1], allowedDays, true);
+            scheduleScheduleAlarm(context, ALARM_SCHEDULE_START_CODE, ACTION_SCHEDULE_START, nextStartMs);
+
+            long nextEndMs = computeNextEndAfter(nextStartMs, startParts[0], startParts[1], endParts[0], endParts[1]);
+            scheduleScheduleAlarm(context, ALARM_SCHEDULE_END_CODE, ACTION_SCHEDULE_END, nextEndMs);
+        }
+    }
+
+    /**
+     * Cancels both DAY_START and DAY_END alarms and clears the paused state.
+     */
+    public static void cancelDailySchedule(Context context) {
+        cancelScheduleAlarm(context, ALARM_SCHEDULE_START_CODE, ACTION_SCHEDULE_START);
+        cancelScheduleAlarm(context, ALARM_SCHEDULE_END_CODE, ACTION_SCHEDULE_END);
+
+        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.cancel(NOTIFICATION_SCHEDULE_START_ID);
+            nm.cancel(NOTIFICATION_SCHEDULE_END_ID);
+        }
+
+        getPrefs(context).edit().remove(KEY_SCHEDULE_PAUSED_DATE).apply();
+        Log.d(TAG, "Cancelled daily schedule alarms and cleared paused date");
+    }
+
+    /**
+     * Handles DAY_START alarm trigger.
+     */
+    public static void handleScheduleStart(Context context) {
+        SharedPreferences prefs = getPrefs(context);
+        boolean enabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false);
+        if (!enabled) return;
+
+        Log.d(TAG, "handleScheduleStart: Starting day's reminders");
+
+        // Clear previous manual pause on new start
+        prefs.edit().remove(KEY_SCHEDULE_PAUSED_DATE).apply();
+
+        String startTimeStr = prefs.getString(KEY_SCHEDULE_START_TIME, "08:00");
+        String endTimeStr = prefs.getString(KEY_SCHEDULE_END_TIME, "21:00");
+        String daysJson = prefs.getString(KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
+        boolean notify = prefs.getBoolean(KEY_SCHEDULE_NOTIFY, true);
+
+        int intervalMins = prefs.getInt(KEY_INTERVAL, 5);
+        String wordsJson = prefs.getString(KEY_WORDS, "[]");
+        int wordsCount = 0;
+        try {
+            wordsCount = new org.json.JSONArray(wordsJson).length();
+        } catch (Exception ignored) {}
+
+        if (wordsCount > 0) {
+            startReminderChain(context, intervalMins, wordsJson);
+            if (notify) {
+                String formattedEnd = formatTime12h(endTimeStr);
+                String msg = "Word reminders every " + intervalMins + " min until " + formattedEnd + " (" + wordsCount + " words saved). Tap to open.";
+                showScheduleNotification(context, NOTIFICATION_SCHEDULE_START_ID, "Voco is on for today", msg);
+            }
+        } else {
+            Log.w(TAG, "handleScheduleStart: Word bank empty. Reminders not started.");
+            if (notify) {
+                showScheduleNotification(context, NOTIFICATION_SCHEDULE_START_ID, "Voco is on for today", "No saved words yet. Open Voco to add words and start reminders.");
+            }
+        }
+
+        // Re-schedule NEXT start alarm
+        Calendar cal = Calendar.getInstance();
+        int[] startParts = parseHourMinute(startTimeStr, 8, 0);
+        int[] endParts = parseHourMinute(endTimeStr, 21, 0);
+        Set<Integer> allowedDays = parseDaysSet(daysJson);
+
+        long nextStartMs = computeNextOccurrence(cal, startParts[0], startParts[1], allowedDays, false);
+        scheduleScheduleAlarm(context, ALARM_SCHEDULE_START_CODE, ACTION_SCHEDULE_START, nextStartMs);
+
+        // Ensure current window end is scheduled
+        long nextEndMs = computeNextWindowEnd(cal, startParts[0], startParts[1], endParts[0], endParts[1]);
+        scheduleScheduleAlarm(context, ALARM_SCHEDULE_END_CODE, ACTION_SCHEDULE_END, nextEndMs);
+    }
+
+    /**
+     * Handles DAY_END alarm trigger.
+     */
+    public static void handleScheduleEnd(Context context) {
+        SharedPreferences prefs = getPrefs(context);
+        boolean enabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false);
+        if (!enabled) return;
+
+        Log.d(TAG, "handleScheduleEnd: Stopping day's reminders");
+
+        // Cancel all future interval reminders
+        cancelAlarms(context);
+
+        // Clear leftover reminder queue
+        prefs.edit().putString(KEY_PENDING_QUEUE, "[]").apply();
+
+        String startTimeStr = prefs.getString(KEY_SCHEDULE_START_TIME, "08:00");
+        String endTimeStr = prefs.getString(KEY_SCHEDULE_END_TIME, "21:00");
+        String daysJson = prefs.getString(KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
+        boolean notify = prefs.getBoolean(KEY_SCHEDULE_NOTIFY, true);
+
+        if (notify) {
+            String formattedStart = formatTime12h(startTimeStr);
+            String msg = "Reminders stopped. See you tomorrow at " + formattedStart + ".";
+            showScheduleNotification(context, NOTIFICATION_SCHEDULE_END_ID, "Voco is done for today", msg);
+        }
+
+        // Re-schedule NEXT end alarm
+        Calendar cal = Calendar.getInstance();
+        int[] startParts = parseHourMinute(startTimeStr, 8, 0);
+        int[] endParts = parseHourMinute(endTimeStr, 21, 0);
+        Set<Integer> allowedDays = parseDaysSet(daysJson);
+
+        long nextStartMs = computeNextOccurrence(cal, startParts[0], startParts[1], allowedDays, true);
+        long nextEndMs = computeNextEndAfter(nextStartMs, startParts[0], startParts[1], endParts[0], endParts[1]);
+        scheduleScheduleAlarm(context, ALARM_SCHEDULE_END_CODE, ACTION_SCHEDULE_END, nextEndMs);
+    }
+
+    public static void scheduleScheduleAlarm(Context context, int requestCode, String action, long triggerWallClockMillis) {
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+
+        Intent intent = new Intent(context, VocoAlarmReceiver.class);
+        intent.setAction(action);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+
+        PendingIntent pi = PendingIntent.getBroadcast(context, requestCode, intent, flags);
+        am.cancel(pi);
+
+        if (canScheduleExactAlarms(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerWallClockMillis, pi);
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                am.setExact(AlarmManager.RTC_WAKEUP, triggerWallClockMillis, pi);
+            } else {
+                am.set(AlarmManager.RTC_WAKEUP, triggerWallClockMillis, pi);
+            }
+            Log.d(TAG, "Scheduled exact schedule alarm (" + action + ") at " + new Date(triggerWallClockMillis));
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerWallClockMillis, pi);
+            } else {
+                am.set(AlarmManager.RTC_WAKEUP, triggerWallClockMillis, pi);
+            }
+            Log.w(TAG, "Scheduled allow-while-idle schedule alarm (" + action + ") at " + new Date(triggerWallClockMillis));
+        }
+    }
+
+    public static void cancelScheduleAlarm(Context context, int requestCode, String action) {
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (am == null) return;
+
+        Intent intent = new Intent(context, VocoAlarmReceiver.class);
+        intent.setAction(action);
+
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pi = PendingIntent.getBroadcast(context, requestCode, intent, flags);
+        if (pi != null) {
+            am.cancel(pi);
+            pi.cancel();
+        }
+    }
+
+    // ── Schedule Calculation Utilities ──
+
+    public static String getTodayDateString() {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+    }
+
+    public static int[] parseHourMinute(String timeStr, int defHour, int defMin) {
+        if (timeStr == null || !timeStr.contains(":")) {
+            return new int[]{defHour, defMin};
+        }
+        try {
+            String[] parts = timeStr.split(":");
+            return new int[]{Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim())};
+        } catch (Exception e) {
+            return new int[]{defHour, defMin};
+        }
+    }
+
+    public static Set<Integer> parseDaysSet(String daysJson) {
+        Set<Integer> set = new HashSet<>();
+        try {
+            org.json.JSONArray arr = new org.json.JSONArray(daysJson);
+            for (int i = 0; i < arr.length(); i++) {
+                set.add(arr.getInt(i));
+            }
+        } catch (Exception e) {
+            for (int d = 1; d <= 7; d++) set.add(d);
+        }
+        if (set.isEmpty()) {
+            for (int d = 1; d <= 7; d++) set.add(d);
+        }
+        return set;
+    }
+
+    public static int getCalendarIsoDay(Calendar cal) {
+        int dow = cal.get(Calendar.DAY_OF_WEEK);
+        // Calendar.SUNDAY = 1 -> ISO 7, Calendar.MONDAY = 2 -> ISO 1
+        return (dow == Calendar.SUNDAY) ? 7 : (dow - 1);
+    }
+
+    public static boolean isInsideScheduleWindow(
+        Calendar cal,
+        int startHour,
+        int startMin,
+        int endHour,
+        int endMin,
+        Set<Integer> allowedDays
+    ) {
+        int currentMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE);
+        int startMinutes = startHour * 60 + startMin;
+        int endMinutes = endHour * 60 + endMin;
+        int currentIsoDay = getCalendarIsoDay(cal);
+
+        if (startMinutes < endMinutes) {
+            // Normal daytime window (e.g. 08:00 - 21:00)
+            return allowedDays.contains(currentIsoDay) && currentMinutes >= startMinutes && currentMinutes < endMinutes;
+        } else if (startMinutes > endMinutes) {
+            // Overnight window (e.g. 22:00 - 02:00)
+            if (currentMinutes >= startMinutes) {
+                // Evening portion: active if today was selected
+                return allowedDays.contains(currentIsoDay);
+            } else if (currentMinutes < endMinutes) {
+                // Morning portion past midnight: active if yesterday was selected
+                int prevIsoDay = (currentIsoDay == 1) ? 7 : (currentIsoDay - 1);
+                return allowedDays.contains(prevIsoDay);
+            }
+        }
+        return false;
+    }
+
+    public static long computeNextOccurrence(
+        Calendar nowCal,
+        int targetHour,
+        int targetMinute,
+        Set<Integer> allowedDays,
+        boolean allowTodayIfFuture
+    ) {
+        int currentMinutes = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
+        int targetMinutes = targetHour * 60 + targetMinute;
+        int currentIsoDay = getCalendarIsoDay(nowCal);
+
+        if (allowTodayIfFuture && allowedDays.contains(currentIsoDay) && currentMinutes < targetMinutes) {
+            Calendar target = (Calendar) nowCal.clone();
+            target.set(Calendar.HOUR_OF_DAY, targetHour);
+            target.set(Calendar.MINUTE, targetMinute);
+            target.set(Calendar.SECOND, 0);
+            target.set(Calendar.MILLISECOND, 0);
+            return target.getTimeInMillis();
+        }
+
+        for (int offset = 1; offset <= 8; offset++) {
+            Calendar candidate = (Calendar) nowCal.clone();
+            candidate.add(Calendar.DAY_OF_YEAR, offset);
+            int isoDay = getCalendarIsoDay(candidate);
+            if (allowedDays.contains(isoDay)) {
+                candidate.set(Calendar.HOUR_OF_DAY, targetHour);
+                candidate.set(Calendar.MINUTE, targetMinute);
+                candidate.set(Calendar.SECOND, 0);
+                candidate.set(Calendar.MILLISECOND, 0);
+                return candidate.getTimeInMillis();
+            }
+        }
+
+        Calendar fallback = (Calendar) nowCal.clone();
+        fallback.add(Calendar.DAY_OF_YEAR, 1);
+        fallback.set(Calendar.HOUR_OF_DAY, targetHour);
+        fallback.set(Calendar.MINUTE, targetMinute);
+        fallback.set(Calendar.SECOND, 0);
+        fallback.set(Calendar.MILLISECOND, 0);
+        return fallback.getTimeInMillis();
+    }
+
+    public static long computeNextWindowEnd(
+        Calendar nowCal,
+        int startHour,
+        int startMin,
+        int endHour,
+        int endMin
+    ) {
+        int currentMinutes = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE);
+        int startMinutes = startHour * 60 + startMin;
+        int endMinutes = endHour * 60 + endMin;
+
+        Calendar endCal = (Calendar) nowCal.clone();
+        endCal.set(Calendar.HOUR_OF_DAY, endHour);
+        endCal.set(Calendar.MINUTE, endMin);
+        endCal.set(Calendar.SECOND, 0);
+        endCal.set(Calendar.MILLISECOND, 0);
+
+        if (startMinutes < endMinutes) {
+            return endCal.getTimeInMillis();
+        } else {
+            if (currentMinutes >= startMinutes) {
+                endCal.add(Calendar.DAY_OF_YEAR, 1);
+            }
+            return endCal.getTimeInMillis();
+        }
+    }
+
+    public static long computeNextEndAfter(long startMillis, int startHour, int startMin, int endHour, int endMin) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(startMillis);
+
+        int startMinutes = startHour * 60 + startMin;
+        int endMinutes = endHour * 60 + endMin;
+
+        cal.set(Calendar.HOUR_OF_DAY, endHour);
+        cal.set(Calendar.MINUTE, endMin);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+
+        if (startMinutes > endMinutes) {
+            cal.add(Calendar.DAY_OF_YEAR, 1);
+        }
+        return cal.getTimeInMillis();
+    }
+
+    public static String formatTime12h(String time24) {
+        if (time24 == null || !time24.contains(":")) return time24;
+        try {
+            String[] parts = time24.split(":");
+            int hour = Integer.parseInt(parts[0].trim());
+            int min = Integer.parseInt(parts[1].trim());
+            String ampm = (hour >= 12) ? "PM" : "AM";
+            int hour12 = hour % 12;
+            if (hour12 == 0) hour12 = 12;
+            return String.format(Locale.US, "%d:%02d %s", hour12, min, ampm);
+        } catch (Exception e) {
+            return time24;
+        }
     }
 }

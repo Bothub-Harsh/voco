@@ -1,3 +1,5 @@
+import { syncThemeToNative } from './notifications';
+
 export type ThemeId =
   | 'clean-light'
   | 'midnight'
@@ -296,6 +298,8 @@ export function applyTheme(themeId: ThemeId): void {
   root.style.setProperty('--voco-bg-surface-hover', theme.colors.bgSurfaceHover);
   root.style.setProperty('--voco-border', theme.colors.border);
   root.style.setProperty('--voco-border-subtle', theme.colors.borderSubtle);
+  root.style.setProperty('--voco-card-bg', theme.colors.bgSurface);
+  root.style.setProperty('--voco-card-border', theme.colors.borderSubtle);
   root.style.setProperty('--voco-text-primary', theme.colors.textPrimary);
   root.style.setProperty('--voco-text-secondary', theme.colors.textSecondary);
   root.style.setProperty('--voco-text-muted', theme.colors.textMuted);
@@ -322,6 +326,9 @@ export function applyTheme(themeId: ThemeId): void {
   } catch {
     // Ignore storage errors
   }
+
+  // Sync with native Android storage for VocoQuizDialogActivity
+  syncThemeToNative(theme.id).catch(() => {});
 }
 
 export function setTheme(themeId: ThemeId): ThemeId {
