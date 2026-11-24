@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Wifi, WifiOff, KeyRound, Palette, Loader2, AlertCircle } from 'lucide-react';
+import { BookOpen, Wifi, WifiOff, KeyRound, Palette, Loader2, AlertCircle, Moon } from 'lucide-react';
 import type { BackendStatus } from '../types';
 import { getThemeDefinition, type Theme } from '../services/theme';
 
@@ -95,6 +95,16 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <KeyRound className="w-3 h-3 mr-1 text-amber-500 shrink-0" />
               <span>AI Problem</span>
+            </button>
+          ) : backendStatus?.keepAlive?.activeNow === false ? (
+            <button
+              type="button"
+              onClick={onCheckBackend}
+              className="flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-zinc-700 cursor-pointer"
+              title="Server is resting for the night. Wakes in the morning. Tap to check status."
+            >
+              <Moon className="w-3 h-3 mr-1 text-indigo-500 dark:text-indigo-400 shrink-0" />
+              <span>Resting</span>
             </button>
           ) : backendStatus?.state === 'down' || (backendStatus?.state === 'unavailable' && backendStatus.reachable === false) ? (
             <button

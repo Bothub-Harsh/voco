@@ -30,4 +30,13 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
     }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (VocoAlarmScheduler.isStrictMode(this) && VocoAlarmScheduler.isRemindersEnabled(this)) {
+            VocoAlarmScheduler.reconcileStrictNotifications(this);
+        }
+        VocoAlarmScheduler.reconcileMorningNoteNotification(this);
+    }
 }

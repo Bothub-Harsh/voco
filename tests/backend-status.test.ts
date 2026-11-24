@@ -282,4 +282,36 @@ describe('Frontend Backend Status Handling — All 6 Core Scenarios', () => {
     expect(res2.reachable).toBe(true);
     expect(res3.reachable).toBe(true);
   });
+
+  it('populates keepAlive window details and device lastCheckedAt accurately', async () => {
+    const fixedNow = 1763805000000;
+    vi.setSystemTime(fixedNow);
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ok',
+        configured: true,
+        model: 'openai/gpt-oss-120b',
+        lastSelfPingAt: '2026-11-21T18:00:00.000Z', // Old server self-ping
+        keepAlive: {
+          enabledWindow: '07:00-23:00',
+          timezone: 'Asia/Kolkata',
+          activeNow: false,
+          nextWindowStart: '2026-11-23T01:30:00.000Z',
+          lastSelfPingAt: '2026-11-21T18:00:00.000Z',
+        },
+      }),
+    });
+
+    const result = await checkBackendStatus();
+    expect(result.reachable).toBe(true);
+    expect(result.keepAlive?.activeNow).toBe(false);
+    expect(result.keepAlive?.enabledWindow).toBe('07:00-23:00');
+    expect(result.keepAlive?.timezone).toBe('Asia/Kolkata');
+    // Device lastCheckedAt reflects the local device time, NOT the stale server self-ping
+    expect(result.lastCheckedAt).toBe(fixedNow);
+    expect(result.lastPingAt).toBe('2026-11-21T18:00:00.000Z');
+  });
 });

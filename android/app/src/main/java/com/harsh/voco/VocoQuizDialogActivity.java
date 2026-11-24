@@ -53,6 +53,7 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     private String hindiMeaning = "";
     private String hindiExample = "";
     private int notificationId = -1;
+    private boolean currentWordSolved = false;
 
     // Flip card state
     private boolean isShowingFront = true;
@@ -226,11 +227,14 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
 
         // ─── Dynamic Next / Close Button Listener ───
         btnBottomAction.setOnClickListener(v -> {
-            int otherPending = VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
+            currentWordSolved = true;
+            int otherPending = VocoAlarmScheduler.isStrictMode(this)
+                    ? VocoAlarmScheduler.getOtherStrictPendingCount(this, wordId)
+                    : VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
             if (otherPending > 0) {
                 handleNextPendingWord();
             } else {
-                dismissQuiz();
+                completeAndDismissQuiz();
             }
         });
     }
@@ -265,7 +269,9 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
      * If no other pending words exist -> "Close".
      */
     public void updateBottomButton() {
-        int otherPending = VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
+        int otherPending = VocoAlarmScheduler.isStrictMode(this)
+                ? VocoAlarmScheduler.getOtherStrictPendingCount(this, wordId)
+                : VocoAlarmScheduler.getOtherPendingNotificationCount(this, wordId);
         float density = getResources().getDisplayMetrics().density;
         if (currentTheme == null) {
             currentTheme = VocoTheme.get(VocoAlarmScheduler.getSelectedTheme(this));
@@ -354,17 +360,40 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
      * Opens the next pending notification word from the queue.
      */
     private void handleNextPendingWord() {
-        // Remove current word from queue before popping the next
-        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+        String solvedWordId = wordId;
+        if (VocoAlarmScheduler.isStrictMode(this)) {
+            VocoAlarmScheduler.markStrictWordSolved(this, solvedWordId);
+            org.json.JSONObject nextItem = VocoAlarmScheduler.getNextStrictPendingWord(this);
+            if (nextItem == null) {
+                completeAndDismissQuiz();
+                return;
+            }
 
-        org.json.JSONObject nextItem = VocoAlarmScheduler.popNextPendingNotification(this, wordId);
+            wordId = nextItem.optString("wordId", "");
+            wordText = nextItem.optString("wordText", "Vocabulary");
+            correctMeaning = nextItem.optString("meaning", "");
+            exampleSentence = nextItem.optString("example", "");
+            hindiMeaning = nextItem.optString("hindiMeaning", "");
+            hindiExample = nextItem.optString("hindiExample", "");
+            notificationId = nextItem.optInt("notifId", -1);
+            currentWordSolved = false;
+
+            resetToFront();
+            populateCardData();
+            updateBottomButton();
+            return;
+        }
+
+        // Non-strict queue popping logic
+        VocoAlarmScheduler.removePendingNotification(this, notificationId, solvedWordId);
+        org.json.JSONObject nextItem = VocoAlarmScheduler.popNextPendingNotification(this, solvedWordId);
         if (nextItem == null) {
             // Also try popping any remaining item
             nextItem = VocoAlarmScheduler.popNextPendingNotification(this, null);
         }
 
         if (nextItem == null) {
-            dismissQuiz();
+            completeAndDismissQuiz();
             return;
         }
 
@@ -383,10 +412,35 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
         hindiMeaning = nextItem.optString("hindiMeaning", "");
         hindiExample = nextItem.optString("hindiExample", "");
         notificationId = nextNotifId;
+        currentWordSolved = false;
 
         resetToFront();
         populateCardData();
         updateBottomButton();
+    }
+
+    /**
+     * Completes and solves the final pending word, cancelling any strict notification.
+     */
+    private void completeAndDismissQuiz() {
+        currentWordSolved = true;
+        if (VocoAlarmScheduler.isStrictMode(this)) {
+            VocoAlarmScheduler.markStrictWordSolved(this, wordId);
+        } else {
+            VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                if (notificationId != -1) {
+                    nm.cancel(notificationId);
+                }
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+        } else {
+            finish();
+        }
     }
 
     /**
@@ -433,8 +487,19 @@ public class VocoQuizDialogActivity extends AppCompatActivity {
     }
 
     private void dismissQuiz() {
-        // Remove current word from queue upon clean dismissal
-        VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+        if (VocoAlarmScheduler.isStrictMode(this)) {
+            if (currentWordSolved) {
+                VocoAlarmScheduler.markStrictWordSolved(this, wordId);
+            } else {
+                // In Strict mode, leaving without completing Next/Close keeps the word unsolved.
+                // Reconcile/re-post to ensure it remains active in shade.
+                VocoAlarmScheduler.reconcileStrictNotifications(this);
+            }
+        } else {
+            // Solved or non-strict mode: remove current word from queue upon dismissal
+            VocoAlarmScheduler.removePendingNotification(this, notificationId, wordId);
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             finishAndRemoveTask();
         } else {

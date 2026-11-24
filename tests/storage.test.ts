@@ -151,7 +151,7 @@ describe('IndexedDB Local Storage & Backup Engine', () => {
     const parsed = JSON.parse(jsonString);
 
     expect(parsed.appName).toBe('My Vocabulary');
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
     expect(parsed.words).toHaveLength(1);
     expect(parsed.words[0].word).toBe('Diligent');
   });

@@ -49,6 +49,9 @@ interface VocoSchedulerPlugin {
     endTime: string;
     days: string;
     notifyOnStartEnd: boolean;
+    morningNoteTitle?: string;
+    morningNoteText?: string;
+    morningNotePersistent?: boolean;
   }): Promise<{
     success: boolean;
     enabled: boolean;
@@ -64,11 +67,19 @@ interface VocoSchedulerPlugin {
     isInsideWindow: boolean;
     isPausedToday: boolean;
     remindersRunning: boolean;
+    morningNoteTitle?: string;
+    morningNoteText?: string;
+    morningNotePersistent?: boolean;
   }>;
   cancelDailySchedule(): Promise<{ success: boolean }>;
+  markMorningNoteRead(): Promise<{ success: boolean }>;
+  getLaunchIntent(): Promise<{ openMorningNote?: boolean; quizWordId?: string }>;
   // Theme sync
   saveTheme(options: { themeId: string }): Promise<{ success: boolean; themeId?: string }>;
   getSavedTheme(): Promise<{ themeId: string }>;
+  // Strict mode
+  setStrictMode(options: { enabled: boolean }): Promise<{ success: boolean; enabled: boolean }>;
+  getStrictMode(): Promise<{ enabled: boolean }>;
   // TTS
   speak(options: { text: string; lang?: string }): Promise<{ success: boolean }>;
   stopSpeech(): Promise<{ success: boolean }>;
@@ -395,7 +406,7 @@ export async function openBatterySettings(): Promise<void> {
 }
 
 /**
- * Opens Android app notification channel settings.
+ * Opens Android app notification channel settings or app details.
  */
 export async function openChannelSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
@@ -408,6 +419,40 @@ export async function openChannelSettings(): Promise<void> {
   } catch (err) {
     console.warn('[Voco] Could not open channel settings:', err);
   }
+}
+
+/**
+ * Opens Android App Info / Settings directly.
+ */
+export async function openAppSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    if (typeof VocoScheduler.openAppSettings === 'function') {
+      await VocoScheduler.openAppSettings();
+    } else {
+      await VocoScheduler.openBatterySettings();
+    }
+  } catch (err) {
+    console.warn('[Voco] Could not open app settings:', err);
+  }
+}
+
+/**
+ * Checks current notification permission on Android / Web.
+ */
+export async function checkNotificationPermission(): Promise<'granted' | 'denied' | 'prompt'> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await LocalNotifications.checkPermissions();
+      return res.display === 'granted' ? 'granted' : res.display === 'denied' ? 'denied' : 'prompt';
+    } catch {
+      return 'prompt';
+    }
+  }
+  if (typeof Notification !== 'undefined') {
+    return Notification.permission as 'granted' | 'denied' | 'prompt';
+  }
+  return 'prompt';
 }
 
 /**
@@ -474,6 +519,40 @@ export function pickNextReminderWord(words: VocabularyWord[]): VocabularyWord | 
  * Starts native Android alarm reminders.
  * The Android operating system's AlarmManager handles subsequent reminders perpetually.
  */
+// ─────────────────────────────────────────────
+// Strict Reminder Mode
+// ─────────────────────────────────────────────
+export const STRICT_MODE_STORAGE_KEY = 'voco_strict_reminder_mode';
+
+export function isStrictModeEnabled(): boolean {
+  return getStorageItem(STRICT_MODE_STORAGE_KEY) === 'true';
+}
+
+export async function setStrictModeEnabled(enabled: boolean): Promise<void> {
+  setStorageItem(STRICT_MODE_STORAGE_KEY, enabled ? 'true' : 'false');
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await VocoScheduler.setStrictMode({ enabled });
+    } catch (err) {
+      console.warn('[Voco] setStrictMode note:', err);
+    }
+  }
+}
+
+export async function syncStrictModeFromNative(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return isStrictModeEnabled();
+  try {
+    const res = await VocoScheduler.getStrictMode();
+    if (res && typeof res.enabled === 'boolean') {
+      setStorageItem(STRICT_MODE_STORAGE_KEY, res.enabled ? 'true' : 'false');
+      return res.enabled;
+    }
+  } catch (err) {
+    console.warn('[Voco] syncStrictModeFromNative note:', err);
+  }
+  return isStrictModeEnabled();
+}
+
 export async function scheduleNativeReminders(
   words: VocabularyWord[],
   intervalMinutes: number
@@ -490,6 +569,8 @@ export async function scheduleNativeReminders(
         word: w.word,
         meaning: w.meaning,
         example: w.example || '',
+        hindiMeaning: w.hindiMeaning || '',
+        hindiExample: w.hindiExample || '',
         options: w.options || [],
         correctIndex: typeof w.correctIndex === 'number' ? w.correctIndex : 0,
       }))
@@ -528,6 +609,8 @@ export async function syncWordsWithNativeScheduler(words: VocabularyWord[]): Pro
         word: w.word,
         meaning: w.meaning,
         example: w.example || '',
+        hindiMeaning: w.hindiMeaning || '',
+        hindiExample: w.hindiExample || '',
         options: w.options || [],
         correctIndex: typeof w.correctIndex === 'number' ? w.correctIndex : 0,
       }))
@@ -705,6 +788,49 @@ export function setupNotificationListeners(onOpenQuizForWordId: (wordId: string)
   }
 }
 
+let nativeMorningNoteInitialized = false;
+
+export function setupMorningNoteListener(onOpenMorningNote: () => void): void {
+  if (Capacitor.isNativePlatform() && !nativeMorningNoteInitialized) {
+    nativeMorningNoteInitialized = true;
+    try {
+      (VocoScheduler as any).addListener('morningNoteOpened', (data: { openMorningNote?: boolean }) => {
+        if (data && data.openMorningNote) {
+          onOpenMorningNote();
+        }
+      });
+    } catch (err) {
+      console.warn('[Voco] Native morning note listener note:', err);
+    }
+  }
+}
+
+export async function checkLaunchIntent(): Promise<{ openMorningNote?: boolean; quizWordId?: string } | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    if (typeof VocoScheduler.getLaunchIntent === 'function') {
+      const res = await VocoScheduler.getLaunchIntent();
+      return res || null;
+    }
+  } catch (err) {
+    console.warn('[Voco] checkLaunchIntent error:', err);
+  }
+  return null;
+}
+
+export async function markMorningNoteRead(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    if (typeof VocoScheduler.markMorningNoteRead === 'function') {
+      await VocoScheduler.markMorningNoteRead();
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Voco] markMorningNoteRead error:', err);
+  }
+  return false;
+}
+
 // ─────────────────────────────────────────────
 // Daily Schedule Service
 // ─────────────────────────────────────────────
@@ -719,7 +845,25 @@ export const DEFAULT_DAILY_SCHEDULE: DailyScheduleConfig = {
   days: [1, 2, 3, 4, 5, 6, 7], // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
   notifyOnStartEnd: true,
   pausedDate: null,
+  morningNoteTitle: 'Good morning',
+  morningNoteText: '',
+  morningNotePersistent: true,
 };
+
+/**
+ * Resolves {words} and {end} placeholders in note text.
+ * Unknown placeholders remain untouched as plain text.
+ */
+export function resolveNotePlaceholders(
+  text: string,
+  wordsCount: number,
+  formattedEnd: string
+): string {
+  if (!text) return text;
+  return text
+    .replace(/\{words\}/gi, String(wordsCount))
+    .replace(/\{end\}/gi, formattedEnd);
+}
 
 export const DAY_CHIPS: { id: number; label: string; full: string }[] = [
   { id: 1, label: 'M', full: 'Mon' },
@@ -883,6 +1027,9 @@ export function getDailyScheduleConfig(): DailyScheduleConfig {
       days: Array.isArray(parsed.days) && parsed.days.length > 0 ? parsed.days : [1, 2, 3, 4, 5, 6, 7],
       notifyOnStartEnd: parsed.notifyOnStartEnd !== false,
       pausedDate: parsed.pausedDate || getStorageItem(DAILY_SCHEDULE_PAUSED_KEY) || null,
+      morningNoteTitle: parsed.morningNoteTitle !== undefined ? parsed.morningNoteTitle : 'Good morning',
+      morningNoteText: parsed.morningNoteText || '',
+      morningNotePersistent: parsed.morningNotePersistent !== false,
     };
   } catch {
     return { ...DEFAULT_DAILY_SCHEDULE };
@@ -909,6 +1056,9 @@ export async function saveDailySchedule(config: DailyScheduleConfig): Promise<bo
         endTime: config.endTime,
         days: JSON.stringify(config.days),
         notifyOnStartEnd: config.notifyOnStartEnd,
+        morningNoteTitle: config.morningNoteTitle || '',
+        morningNoteText: config.morningNoteText || '',
+        morningNotePersistent: config.morningNotePersistent !== false,
       });
       return true;
     } catch (err) {
@@ -935,6 +1085,9 @@ export async function syncDailyScheduleFromNative(): Promise<DailyScheduleConfig
       days: parsedDays,
       notifyOnStartEnd: native.notifyOnStartEnd !== false,
       pausedDate: native.isPausedToday ? getTodayDateString() : null,
+      morningNoteTitle: native.morningNoteTitle !== undefined ? native.morningNoteTitle : 'Good morning',
+      morningNoteText: native.morningNoteText || '',
+      morningNotePersistent: native.morningNotePersistent !== false,
     };
     setDailyScheduleConfig(config);
     return config;
@@ -943,8 +1096,8 @@ export async function syncDailyScheduleFromNative(): Promise<DailyScheduleConfig
   }
 }
 
-export function markSchedulePausedToday(): void {
-  const today = getTodayDateString();
+export function markSchedulePausedToday(date: Date = new Date()): void {
+  const today = getTodayDateString(date);
   setStorageItem(DAILY_SCHEDULE_PAUSED_KEY, today);
   const cfg = getDailyScheduleConfig();
   cfg.pausedDate = today;

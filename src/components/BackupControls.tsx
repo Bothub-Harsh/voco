@@ -115,6 +115,11 @@ export const BackupControls: React.FC<BackupControlsProps> = ({
         let summaryMsg = `Successfully imported ${result.importedCount} word${
           result.importedCount === 1 ? '' : 's'
         }.`;
+        if (result.sectionsImported && result.sectionsImported > 0) {
+          summaryMsg += ` ${result.sectionsImported} section${
+            result.sectionsImported === 1 ? '' : 's'
+          } imported.`;
+        }
         if (result.skippedCount > 0) {
           summaryMsg += ` ${result.skippedCount} duplicate${
             result.skippedCount === 1 ? '' : 's'

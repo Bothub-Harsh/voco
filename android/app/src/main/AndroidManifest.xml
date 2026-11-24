@@ -56,8 +56,14 @@
             <intent-filter>
                 <action android:name="com.harsh.voco.PRACTICE_REMINDER" />
                 <action android:name="com.harsh.voco.NOTIFICATION_DISMISSED" />
+                <action android:name="com.harsh.voco.STRICT_NOTIFICATION_DISMISSED" />
+                <action android:name="com.harsh.voco.STRICT_SUMMARY_DISMISSED" />
+                <action android:name="com.harsh.voco.STRICT_REPOST" />
+                <action android:name="com.harsh.voco.STRICT_RECONCILE" />
                 <action android:name="com.harsh.voco.SCHEDULE_START" />
                 <action android:name="com.harsh.voco.SCHEDULE_END" />
+                <action android:name="com.harsh.voco.MORNING_NOTE_DISMISSED" />
+                <action android:name="com.harsh.voco.MORNING_NOTE_RECONCILE" />
             </intent-filter>
         </receiver>
 
@@ -74,12 +80,25 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
+
+        <!-- Native Foreground Service for Strict Reminder Mode -->
+        <service
+            android:name=".VocoStrictReminderService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintains vocabulary practice reminder until the flashcard is completed" />
+        </service>
     </application>
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

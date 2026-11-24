@@ -44,6 +44,47 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
             return;
         }
 
+        if (intent != null && VocoAlarmScheduler.ACTION_STRICT_NOTIFICATION_DISMISSED.equals(intent.getAction())) {
+            Log.d(TAG, "[VOCO_STRICT] Strict notification dismissed: re-posting unsolved word");
+            VocoAlarmScheduler.handleStrictNotificationDismissed(context, intent);
+            return;
+        }
+
+        if (intent != null && VocoAlarmScheduler.ACTION_STRICT_SUMMARY_DISMISSED.equals(intent.getAction())) {
+            Log.d(TAG, "[VOCO_STRICT] Strict group summary dismissed: reconciling strict notifications");
+            VocoAlarmScheduler.reconcileStrictNotifications(context);
+            return;
+        }
+
+        if (intent != null && VocoAlarmScheduler.ACTION_STRICT_REPOST.equals(intent.getAction())) {
+            String wordId = intent.getStringExtra(VocoQuizDialogActivity.EXTRA_WORD_ID);
+            Log.d(TAG, "[VOCO_STRICT] Strict notification repost alarm triggered for wordId=" + wordId);
+            if (wordId != null && !wordId.isEmpty()) {
+                VocoAlarmScheduler.repostStrictWordIfPending(context, wordId);
+            } else {
+                VocoAlarmScheduler.reconcileStrictNotifications(context);
+            }
+            return;
+        }
+
+        if (intent != null && VocoAlarmScheduler.ACTION_STRICT_RECONCILE.equals(intent.getAction())) {
+            Log.d(TAG, "[VOCO_STRICT] Strict periodic reconcile alarm triggered");
+            VocoAlarmScheduler.reconcileStrictNotifications(context);
+            return;
+        }
+
+        if (intent != null && VocoAlarmScheduler.ACTION_MORNING_NOTE_DISMISSED.equals(intent.getAction())) {
+            Log.d(TAG, "[VOCO_MORNING] Persistent morning note dismissed intent received");
+            VocoAlarmScheduler.handleMorningNoteDismissed(context);
+            return;
+        }
+
+        if (intent != null && VocoAlarmScheduler.ACTION_MORNING_NOTE_RECONCILE.equals(intent.getAction())) {
+            Log.d(TAG, "[VOCO_MORNING] Morning note reconcile alarm triggered");
+            VocoAlarmScheduler.reconcileMorningNoteNotification(context);
+            return;
+        }
+
         String action = intent != null ? intent.getAction() : null;
 
         // ── Daily Schedule Triggers ──
@@ -76,6 +117,80 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
 
         int intervalMins = prefs.getInt(VocoAlarmScheduler.KEY_INTERVAL, 5);
         if (intervalMins < 1) intervalMins = 1;
+
+        // Reconcile morning note notification if unread
+        VocoAlarmScheduler.reconcileMorningNoteNotification(context);
+
+        // ── Strict Reminder Mode Check ──
+        if (VocoAlarmScheduler.isStrictMode(context)) {
+            Log.d(TAG, "[VOCO_STRICT] Interval alarm fired in strict mode");
+
+            // 1. Reconcile existing pending notifications against active status
+            VocoAlarmScheduler.reconcileStrictNotifications(context);
+
+            // 2. Check strict cap
+            int pendingCount = VocoAlarmScheduler.getStrictPendingCount(context);
+            if (pendingCount >= VocoAlarmScheduler.STRICT_CAP) {
+                Log.d(TAG, "[VOCO_STRICT] Pending count (" + pendingCount + ") reached STRICT_CAP (" + VocoAlarmScheduler.STRICT_CAP + "). Pausing new word addition.");
+                scheduleNextIntervalAlarm(context, prefs, intervalMins, currentGen);
+                return;
+            }
+
+            // 3. Select a candidate word not already in the strict pending list
+            String wordsJson = prefs.getString(VocoAlarmScheduler.KEY_WORDS, "[]");
+            try {
+                JSONArray arr = new JSONArray(wordsJson);
+                if (arr.length() > 0) {
+                    List<JSONObject> pendingList = VocoAlarmScheduler.getStrictPendingList(context);
+                    Set<String> pendingIds = new HashSet<>();
+                    for (JSONObject p : pendingList) {
+                        String pid = p.optString("wordId", "");
+                        if (!pid.isEmpty()) pendingIds.add(pid);
+                    }
+
+                    List<JSONObject> candidates = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject w = arr.getJSONObject(i);
+                        String wid = w.optString("id", "");
+                        if (!pendingIds.contains(wid)) {
+                            candidates.add(w);
+                        }
+                    }
+
+                    if (candidates.isEmpty()) {
+                        Log.d(TAG, "[VOCO_STRICT] All " + arr.length() + " pool words are already pending. Skipping duplicate word addition.");
+                        scheduleNextIntervalAlarm(context, prefs, intervalMins, currentGen);
+                        return;
+                    }
+
+                    // If candidates > 1, avoid recently solved words
+                    if (candidates.size() > 1) {
+                        Set<String> recentSolved = VocoAlarmScheduler.getRecentlySolvedWordIds(context);
+                        List<JSONObject> freshCandidates = new ArrayList<>();
+                        for (JSONObject c : candidates) {
+                            if (!recentSolved.contains(c.optString("id", ""))) {
+                                freshCandidates.add(c);
+                            }
+                        }
+                        if (!freshCandidates.isEmpty()) {
+                            candidates = freshCandidates;
+                        }
+                    }
+
+                    JSONObject selected = candidates.get((int) (Math.random() * candidates.size()));
+                    JSONObject quizItem = buildQuizItem(selected, arr);
+                    if (quizItem != null) {
+                        VocoAlarmScheduler.postStrictWord(context, quizItem, true);
+                        prefs.edit().putString(VocoAlarmScheduler.KEY_LAST_WORD_ID, quizItem.optString("wordId", "")).apply();
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "[VOCO_STRICT] Error selecting strict candidate word", e);
+            }
+
+            scheduleNextIntervalAlarm(context, prefs, intervalMins, currentGen);
+            return;
+        }
 
         String wordsJson = prefs.getString(VocoAlarmScheduler.KEY_WORDS, "[]");
         String wordId = null;
@@ -147,6 +262,10 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
         }
 
         // 2. Schedule next reminder using monotonic clock anchored to intended deadline to eliminate drift
+        scheduleNextIntervalAlarm(context, prefs, intervalMins, currentGen);
+    }
+
+    private void scheduleNextIntervalAlarm(Context context, SharedPreferences prefs, int intervalMins, long currentGen) {
         long intervalMs = intervalMins * 60 * 1000L;
         long nowElapsed = SystemClock.elapsedRealtime();
         long prevTargetElapsed = prefs.getLong(VocoAlarmScheduler.KEY_TARGET_ELAPSED, 0L);
@@ -168,7 +287,51 @@ public class VocoAlarmReceiver extends BroadcastReceiver {
         Log.d(TAG, "Next native reminder scheduled for gen " + currentGen + " in " + ((nextTargetElapsed - nowElapsed) / 1000) + "s");
     }
 
-    private List<String> assembleQuizOptions(JSONObject targetWord, JSONArray allWords) {
+    public static JSONObject buildQuizItem(JSONObject selected, JSONArray allWords) {
+        try {
+            String wordId = selected.optString("id");
+            String wordText = selected.optString("word");
+            String meaning = selected.optString("meaning", "");
+            String example = selected.optString("example", "");
+            String hindiMeaning = selected.optString("hindiMeaning", "");
+            String hindiExample = selected.optString("hindiExample", "");
+
+            List<String> options = new ArrayList<>();
+            int correctIndex = 0;
+            JSONArray optArr = selected.optJSONArray("options");
+            int savedCorrectIdx = selected.optInt("correctIndex", 0);
+
+            if (optArr != null && optArr.length() == 4) {
+                for (int o = 0; o < optArr.length(); o++) {
+                    options.add(optArr.getString(o));
+                }
+                correctIndex = savedCorrectIdx;
+            } else {
+                options = assembleQuizOptions(selected, allWords);
+                correctIndex = options.indexOf(meaning);
+                if (correctIndex == -1) correctIndex = 0;
+            }
+
+            JSONObject item = new JSONObject();
+            item.put("wordId", wordId != null ? wordId : "");
+            item.put("wordText", wordText != null ? wordText : "Vocabulary");
+            item.put("meaning", meaning != null ? meaning : "");
+            item.put("example", example != null ? example : "");
+            item.put("hindiMeaning", hindiMeaning != null ? hindiMeaning : "");
+            item.put("hindiExample", hindiExample != null ? hindiExample : "");
+            item.put("correctIndex", correctIndex);
+            item.put("isTest", false);
+            JSONArray opts = new JSONArray();
+            for (String opt : options) opts.put(opt);
+            item.put("options", opts);
+            return item;
+        } catch (Exception e) {
+            Log.e(TAG, "Error building quiz item", e);
+            return null;
+        }
+    }
+
+    public static List<String> assembleQuizOptions(JSONObject targetWord, JSONArray allWords) {
         String correctMeaning = targetWord.optString("meaning", "").trim();
         Set<String> seen = new HashSet<>();
         seen.add(correctMeaning.toLowerCase());

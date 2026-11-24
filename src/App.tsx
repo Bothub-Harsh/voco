@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { VocabularyWord, BackendStatus, StorageStatus, ActiveQuizSession } from './types';
+import type { VocabularyWord, BackendStatus, StorageStatus, ActiveQuizSession, WordSection } from './types';
 import {
   getAllWords,
   saveWord,
@@ -11,6 +11,25 @@ import {
   seedInitialWordIfEmpty,
   requestPersistentStorage,
   migrateFromLocalStorageIfPresent,
+  getAllSections,
+  createSection,
+  renameSection,
+  deleteSection,
+  mergeSections,
+  undoMergeSections,
+  undoDeleteSection,
+  type MergeSectionResult,
+  type DeleteSectionResult,
+  getSectionWordCounts,
+  addWordsToSection,
+  removeWordsFromSection,
+  setWordSections,
+  getWordSectionMapping,
+  getReminderSelectedSectionIds,
+  setReminderSelectedSectionIds,
+  getReminderWordPool,
+  ALL_WORDS_SECTION_ID,
+  DEFAULT_ALL_WORDS_SECTION,
 } from './db/indexedDb';
 import {
   generateVocabularyFromAI,
@@ -47,6 +66,12 @@ import {
   dequeuePendingNotification,
   removePendingNotificationByWordId,
   type PendingNotificationItem,
+  setStrictModeEnabled,
+  syncStrictModeFromNative,
+  setupMorningNoteListener,
+  checkLaunchIntent,
+  markMorningNoteRead,
+  getDailyScheduleConfig,
 } from './services/notifications';
 import { Header } from './components/Header';
 import { AddWordForm } from './components/AddWordForm';
@@ -57,6 +82,7 @@ import { BottomNav, type TabId } from './components/BottomNav';
 import { SettingsTab } from './components/SettingsTab';
 import { FlashcardScreen } from './components/FlashcardScreen';
 import { StoryModal, type StoryResult } from './components/StoryModal';
+import { MorningNoteScreen } from './components/MorningNoteScreen';
 import { initTheme, toggleTheme, setTheme as setGlobalTheme, type ThemeId } from './services/theme';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -144,7 +170,40 @@ export function App() {
   const wordsRef = useRef<VocabularyWord[]>(words);
   wordsRef.current = words;
 
+  // ─── Word Sections & Strict Mode State ───
+  const [sections, setSections] = useState<WordSection[]>([DEFAULT_ALL_WORDS_SECTION]);
+  const [activeSectionId, setActiveSectionId] = useState<string>(ALL_WORDS_SECTION_ID);
+  const [sectionWordCounts, setSectionWordCounts] = useState<Record<string, number>>({});
+  const [wordSectionMap, setWordSectionMap] = useState<Record<string, string[]>>({});
+  const [selectedReminderSectionIds, setSelectedReminderSectionIds] = useState<string[]>([ALL_WORDS_SECTION_ID]);
+  const [strictMode, setStrictMode] = useState<boolean>(false);
+  const [reminderPool, setReminderPool] = useState<VocabularyWord[]>([]);
+  const [showMorningNote, setShowMorningNote] = useState<boolean>(false);
+
   // ─── Data Loading ───
+  const refreshSectionsData = useCallback(async () => {
+    try {
+      const [allSecs, counts, mapping, reminderSecIds, pool, isStrict] = await Promise.all([
+        getAllSections(),
+        getSectionWordCounts(),
+        getWordSectionMapping(),
+        getReminderSelectedSectionIds(),
+        getReminderWordPool(),
+        syncStrictModeFromNative(),
+      ]);
+      setSections(allSecs);
+      setSectionWordCounts(counts);
+      setWordSectionMap(mapping);
+      setSelectedReminderSectionIds(reminderSecIds);
+      setReminderPool(pool);
+      setStrictMode(isStrict);
+      return { allSecs, counts, mapping, reminderSecIds, pool };
+    } catch (e) {
+      console.error('Failed to load sections data:', e);
+      return null;
+    }
+  }, []);
+
   const refreshWords = useCallback(async () => {
     try {
       const loaded = await getAllWords();
@@ -159,6 +218,10 @@ export function App() {
       return [];
     }
   }, []);
+
+  useEffect(() => {
+    refreshSectionsData();
+  }, [refreshSectionsData]);
 
   // Opens a fresh randomized quiz session for a saved word
   const openQuizForWord = useCallback((word: VocabularyWord) => {
@@ -183,11 +246,15 @@ export function App() {
 
   // ─── Practice All Words Handlers ───
   const handleStartPracticeAll = useCallback(() => {
-    if (wordsRef.current.length === 0) {
-      alert('Save at least one word first before practicing all words.');
+    const practicePool = activeSectionId && activeSectionId !== ALL_WORDS_SECTION_ID
+      ? wordsRef.current.filter((w) => (wordSectionMap[w.id] || []).includes(activeSectionId))
+      : wordsRef.current;
+
+    if (practicePool.length === 0) {
+      alert('No words in this section to practice.');
       return;
     }
-    const shuffled = shuffleArray(wordsRef.current);
+    const shuffled = shuffleArray(practicePool);
     setPracticeAllSession({
       words: shuffled,
       currentIndex: 0,
@@ -196,6 +263,130 @@ export function App() {
     });
     const firstQuiz = generateFreshQuizSession(shuffled[0], wordsRef.current);
     setActiveQuizSession(firstQuiz);
+  }, [activeSectionId, wordSectionMap]);
+
+  // ─── Section CRUD Handlers ───
+  const handleCreateSection = useCallback(async (name: string) => {
+    await createSection(name);
+    await refreshSectionsData();
+  }, [refreshSectionsData]);
+
+  const handleRenameSection = useCallback(async (id: string, newName: string) => {
+    await renameSection(id, newName);
+    await refreshSectionsData();
+  }, [refreshSectionsData]);
+
+  const handleDeleteSection = useCallback(async (id: string): Promise<DeleteSectionResult> => {
+    const deleteResult = await deleteSection(id);
+    if (activeSectionId === id) {
+      setActiveSectionId(ALL_WORDS_SECTION_ID);
+    }
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      if (res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      } else {
+        cancelAllNativeReminders().catch(() => {});
+        persistRemindersActive(false);
+        setRemindersActiveState(false);
+      }
+    }
+    return deleteResult;
+  }, [activeSectionId, refreshSectionsData]);
+
+  const handleMergeSections = useCallback(async (sourceId: string, targetId: string, deleteSource: boolean): Promise<MergeSectionResult> => {
+    const mergeResult = await mergeSections(sourceId, targetId, deleteSource);
+    if (activeSectionId === sourceId || activeSectionId === targetId) {
+      setActiveSectionId(targetId);
+    }
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      if (res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      } else {
+        cancelAllNativeReminders().catch(() => {});
+        persistRemindersActive(false);
+        setRemindersActiveState(false);
+      }
+    }
+    return mergeResult;
+  }, [activeSectionId, refreshSectionsData]);
+
+  const handleUndoMerge = useCallback(async (mergeResult: MergeSectionResult) => {
+    await undoMergeSections(mergeResult);
+    setActiveSectionId(mergeResult.sourceSection.id);
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      if (res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      } else {
+        cancelAllNativeReminders().catch(() => {});
+        persistRemindersActive(false);
+        setRemindersActiveState(false);
+      }
+    }
+  }, [refreshSectionsData]);
+
+  const handleUndoDelete = useCallback(async (deleteResult: DeleteSectionResult) => {
+    await undoDeleteSection(deleteResult);
+    setActiveSectionId(deleteResult.deletedSection.id);
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      if (res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      } else {
+        cancelAllNativeReminders().catch(() => {});
+        persistRemindersActive(false);
+        setRemindersActiveState(false);
+      }
+    }
+  }, [refreshSectionsData]);
+
+  const handleAddWordsToSection = useCallback(async (wordIds: string[], sectionId: string) => {
+    await addWordsToSection(wordIds, sectionId);
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      syncWordsWithNativeScheduler(res.pool).catch(() => {});
+    }
+  }, [refreshSectionsData]);
+
+  const handleRemoveWordsFromSection = useCallback(async (wordIds: string[], sectionId: string) => {
+    await removeWordsFromSection(wordIds, sectionId);
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      syncWordsWithNativeScheduler(res.pool).catch(() => {});
+    }
+  }, [refreshSectionsData]);
+
+  const handleManageWordSections = useCallback(async (wordId: string, sectionIds: string[]) => {
+    await setWordSections(wordId, sectionIds);
+    const res = await refreshSectionsData();
+    if (res && isRemindersActive() && isNativeApp()) {
+      syncWordsWithNativeScheduler(res.pool).catch(() => {});
+    }
+  }, [refreshSectionsData]);
+
+  const handleUpdateReminderSections = useCallback(async (sectionIds: string[]) => {
+    await setReminderSelectedSectionIds(sectionIds);
+    setSelectedReminderSectionIds(sectionIds);
+    const pool = await getReminderWordPool();
+    setReminderPool(pool);
+    const counts = await getSectionWordCounts();
+    setSectionWordCounts(counts);
+    if (isRemindersActive() && isNativeApp()) {
+      if (pool.length > 0) {
+        await syncWordsWithNativeScheduler(pool);
+      } else {
+        await cancelAllNativeReminders();
+        persistRemindersActive(false);
+        setRemindersActiveState(false);
+      }
+    }
+  }, []);
+
+  const handleToggleStrictMode = useCallback(async (enabled: boolean) => {
+    setStrictMode(enabled);
+    await setStrictModeEnabled(enabled);
   }, []);
 
   const handleAnswerSubmittedInPracticeAll = useCallback((isCorrect: boolean) => {
@@ -471,6 +662,18 @@ export function App() {
       }
     });
 
+    // Setup native Morning Note listener (when app is already running / backgrounded)
+    setupMorningNoteListener(() => {
+      setShowMorningNote(true);
+    });
+
+    // Check launch intent on cold start (when app was launched fresh from Morning Note notification)
+    checkLaunchIntent().then((launch) => {
+      if (launch?.openMorningNote) {
+        setShowMorningNote(true);
+      }
+    });
+
     // Online/offline listeners
     const handleOnline = () => {
       setIsOnline(true);
@@ -598,13 +801,16 @@ export function App() {
       setNextReminderTimestamp(newTarget);
       setSecondsRemaining(clamped * 60);
 
-      if (isNativeApp() && wordsRef.current.length > 0) {
-        await scheduleNativeReminders(wordsRef.current, clamped);
+      if (isNativeApp()) {
+        const activePool = reminderPool.length > 0 ? reminderPool : wordsRef.current;
+        if (activePool.length > 0) {
+          await scheduleNativeReminders(activePool, clamped);
+        }
       }
     }
   };
 
-  const handleAddWord = async (inputWord: string) => {
+  const handleAddWord = async (inputWord: string, targetSectionId?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     setLastFailedWord(null);
@@ -620,10 +826,17 @@ export function App() {
     try {
       const generated = await generateVocabularyFromAI(inputWord);
       const saved = await saveWord(generated);
+      if (targetSectionId && targetSectionId !== ALL_WORDS_SECTION_ID) {
+        await addWordsToSection([saved.id], targetSectionId);
+      }
       const updatedList = await refreshWords();
+      const res = await refreshSectionsData();
 
-      if (isNativeApp() && updatedList.length > 0) {
-        syncWordsWithNativeScheduler(updatedList).catch(() => {});
+      if (isNativeApp()) {
+        const poolToSync = res?.pool ?? updatedList;
+        if (poolToSync.length > 0) {
+          syncWordsWithNativeScheduler(poolToSync).catch(() => {});
+        }
       }
 
       setStorageStatus({
@@ -659,7 +872,8 @@ export function App() {
     meaning: string,
     example?: string,
     hindiMeaning?: string,
-    hindiExample?: string
+    hindiExample?: string,
+    targetSectionId?: string
   ) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -673,10 +887,17 @@ export function App() {
         hindiMeaning,
         hindiExample,
       });
+      if (targetSectionId && targetSectionId !== ALL_WORDS_SECTION_ID) {
+        await addWordsToSection([saved.id], targetSectionId);
+      }
       const updatedList = await refreshWords();
+      const res = await refreshSectionsData();
 
-      if (isNativeApp() && updatedList.length > 0) {
-        syncWordsWithNativeScheduler(updatedList).catch(() => {});
+      if (isNativeApp()) {
+        const poolToSync = res?.pool ?? updatedList;
+        if (poolToSync.length > 0) {
+          syncWordsWithNativeScheduler(poolToSync).catch(() => {});
+        }
       }
 
       setStorageStatus({
@@ -728,6 +949,10 @@ export function App() {
 
       await updateWord(updatedWord);
       await refreshWords();
+      const res = await refreshSectionsData();
+      if (isNativeApp() && res && res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      }
     } catch (err) {
       if (isNetworkOrOfflineError(err)) {
         setIsOnline(false);
@@ -754,6 +979,10 @@ export function App() {
     try {
       await updateWord(updated);
       await refreshWords();
+      const res = await refreshSectionsData();
+      if (isNativeApp() && res && res.pool.length > 0) {
+        syncWordsWithNativeScheduler(res.pool).catch(() => {});
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Update failed';
       throw new Error(msg);
@@ -764,6 +993,7 @@ export function App() {
     try {
       await deleteWord(id);
       const remainingWords = await refreshWords();
+      const res = await refreshSectionsData();
 
       setStorageStatus({
         state: 'saved',
@@ -772,8 +1002,9 @@ export function App() {
       });
 
       if (isRemindersActive() && isNativeApp()) {
-        if (remainingWords.length > 0) {
-          syncWordsWithNativeScheduler(remainingWords).catch(() => {});
+        const activePool = res?.pool ?? remainingWords;
+        if (activePool.length > 0) {
+          syncWordsWithNativeScheduler(activePool).catch(() => {});
         } else {
           cancelAllNativeReminders().catch(() => {});
           persistRemindersActive(false);
@@ -794,6 +1025,7 @@ export function App() {
     try {
       await deleteWords(ids);
       const remainingWords = await refreshWords();
+      const res = await refreshSectionsData();
 
       setStorageStatus({
         state: 'saved',
@@ -802,8 +1034,9 @@ export function App() {
       });
 
       if (isRemindersActive() && isNativeApp()) {
-        if (remainingWords.length > 0) {
-          syncWordsWithNativeScheduler(remainingWords).catch(() => {});
+        const activePool = res?.pool ?? remainingWords;
+        if (activePool.length > 0) {
+          syncWordsWithNativeScheduler(activePool).catch(() => {});
         } else {
           cancelAllNativeReminders().catch(() => {});
           persistRemindersActive(false);
@@ -829,8 +1062,9 @@ export function App() {
   };
 
   const handleStartReminders = async () => {
-    if (wordsRef.current.length === 0) {
-      alert('Save at least one word first before starting reminders.');
+    const activePool = reminderPool.length > 0 ? reminderPool : wordsRef.current;
+    if (activePool.length === 0) {
+      alert('Select at least one section with words before starting reminders.');
       return;
     }
 
@@ -854,7 +1088,7 @@ export function App() {
           console.warn('[Voco] Exact alarm check note:', e);
         }
 
-        await scheduleNativeReminders(wordsRef.current, reminderInterval);
+        await scheduleNativeReminders(activePool, reminderInterval);
       }
 
       persistRemindersActive(true);
@@ -896,7 +1130,8 @@ export function App() {
       return;
     }
 
-    const nextWord = pickNextReminderWord(wordsRef.current);
+    const activePool = reminderPool.length > 0 ? reminderPool : wordsRef.current;
+    const nextWord = pickNextReminderWord(activePool);
     if (!nextWord) {
       alert('Save at least one word first before testing reminders.');
       return;
@@ -1128,6 +1363,7 @@ export function App() {
                 lastFailedWord={lastFailedWord}
                 backendStatus={backendStatus}
                 onCheckBackend={handleCheckBackendStatus}
+                sections={sections}
               />
 
               {/* Practice Reminders */}
@@ -1161,6 +1397,20 @@ export function App() {
                 refreshError={refreshError}
                 onClearRefreshError={handleClearRefreshError}
                 highlightedWordId={highlightedWordId}
+                sections={sections}
+                activeSectionId={activeSectionId}
+                onSelectSection={setActiveSectionId}
+                sectionWordCounts={sectionWordCounts}
+                onCreateSection={handleCreateSection}
+                onRenameSection={handleRenameSection}
+                onDeleteSection={handleDeleteSection}
+                onMergeSections={handleMergeSections}
+                onUndoMerge={handleUndoMerge}
+                onUndoDelete={handleUndoDelete}
+                onAddWordsToSection={handleAddWordsToSection}
+                onRemoveWordsFromSection={handleRemoveWordsFromSection}
+                onManageWordSections={handleManageWordSections}
+                wordSectionMap={wordSectionMap}
               />
             </div>
           </div>
@@ -1187,6 +1437,13 @@ export function App() {
                 theme={theme}
                 onSelectTheme={handleSelectTheme}
                 onToggleTheme={handleToggleTheme}
+                sections={sections}
+                sectionWordCounts={sectionWordCounts}
+                selectedReminderSectionIds={selectedReminderSectionIds}
+                onUpdateReminderSections={handleUpdateReminderSections}
+                strictMode={strictMode}
+                onToggleStrictMode={handleToggleStrictMode}
+                reminderPoolCount={reminderPool.length}
               />
             </div>
           </div>
@@ -1261,6 +1518,27 @@ export function App() {
           totalSavedWords={words.length}
           onRegenerate={handleCreateStory}
           onClose={handleCloseStory}
+        />
+      )}
+
+      {/* Morning Note Screen (from Daily Schedule Start Notification) */}
+      {showMorningNote && (
+        <MorningNoteScreen
+          title={getDailyScheduleConfig().morningNoteTitle}
+          text={getDailyScheduleConfig().morningNoteText}
+          totalWords={words.length}
+          endTime={getDailyScheduleConfig().endTime}
+          intervalMinutes={reminderInterval}
+          onOpened={() => {
+            markMorningNoteRead();
+          }}
+          onClose={() => setShowMorningNote(false)}
+          onGoToSettings={() => {
+            setShowMorningNote(false);
+            navigateToTab(TABS.indexOf('settings'));
+            window.history.pushState({ vocoSubPage: 'schedule' }, '');
+            window.dispatchEvent(new PopStateEvent('popstate', { state: { vocoSubPage: 'schedule' } }));
+          }}
         />
       )}
 

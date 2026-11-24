@@ -43,6 +43,14 @@ export type BackendConnectionState =
   | 'connected'
   | 'unavailable';
 
+export interface BackendKeepAliveInfo {
+  enabledWindow?: string;
+  timezone?: string;
+  activeNow?: boolean;
+  nextWindowStart?: string | null;
+  lastSelfPingAt?: string | null;
+}
+
 export interface BackendStatus {
   configured: boolean;
   model: string;
@@ -55,6 +63,7 @@ export interface BackendStatus {
   uptimeSeconds?: number;
   lastPingAt?: string;
   lastCheckedAt?: number;
+  keepAlive?: BackendKeepAliveInfo;
   errorDetail?: string;
 }
 
@@ -86,6 +95,22 @@ export interface PracticeAllSession {
   allSavedWords: VocabularyWord[];  // For quiz option generation
 }
 
+export interface WordSection {
+  id: string;
+  name: string;
+  nameLower: string; // for case-insensitive uniqueness
+  color?: string;
+  createdAt: number;
+  isDefault?: boolean; // true for "All Words"
+}
+
+export interface WordSectionMembership {
+  id: string; // `${wordId}___${sectionId}`
+  wordId: string;
+  sectionId: string;
+  createdAt: number;
+}
+
 export interface DailyScheduleConfig {
   enabled: boolean;
   startTime: string; // "HH:mm" 24h format (e.g. "08:00")
@@ -93,6 +118,9 @@ export interface DailyScheduleConfig {
   days: number[];    // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
   notifyOnStartEnd: boolean; // default true
   pausedDate?: string | null; // "yyyy-MM-dd"
+  morningNoteTitle?: string; // Optional custom title, default "Good morning" (max 60 chars)
+  morningNoteText?: string;  // Multi-line custom text (max 500 chars)
+  morningNotePersistent?: boolean; // Default true - Keep morning notification until opened
 }
 
 export type DailyScheduleState = 'active' | 'scheduled' | 'paused' | 'off';

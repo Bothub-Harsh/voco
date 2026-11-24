@@ -39,7 +39,10 @@ public class VocoNotificationPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
-        VocoAlarmScheduler.createNotificationChannel(getContext());
+        Context ctx = getContext();
+        VocoAlarmScheduler.createNotificationChannel(ctx);
+        VocoAlarmScheduler.createStrictNotificationChannels(ctx);
+        VocoAlarmScheduler.reconcileStrictNotifications(ctx);
 
         // Initialize TTS engine
         tts = new TextToSpeech(getContext(), status -> {
@@ -65,6 +68,30 @@ public class VocoNotificationPlugin extends Plugin {
             data.put("wordId", wordId);
             notifyListeners("notificationOpened", data, true);
         }
+        if (intent != null && intent.getBooleanExtra(VocoAlarmScheduler.EXTRA_OPEN_MORNING_NOTE, false)) {
+            intent.removeExtra(VocoAlarmScheduler.EXTRA_OPEN_MORNING_NOTE);
+            JSObject data = new JSObject();
+            data.put("openMorningNote", true);
+            notifyListeners("morningNoteOpened", data, true);
+        }
+    }
+
+    @PluginMethod
+    public void getLaunchIntent(PluginCall call) {
+        android.app.Activity act = getActivity();
+        JSObject ret = new JSObject();
+        if (act != null && act.getIntent() != null) {
+            Intent intent = act.getIntent();
+            if (intent.getBooleanExtra(VocoAlarmScheduler.EXTRA_OPEN_MORNING_NOTE, false)) {
+                ret.put("openMorningNote", true);
+                intent.removeExtra(VocoAlarmScheduler.EXTRA_OPEN_MORNING_NOTE);
+            }
+            if (intent.hasExtra("quizWordId")) {
+                ret.put("quizWordId", intent.getStringExtra("quizWordId"));
+                intent.removeExtra("quizWordId");
+            }
+        }
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -118,6 +145,16 @@ public class VocoNotificationPlugin extends Plugin {
         }
 
         VocoAlarmScheduler.cancelAlarms(ctx);
+        VocoAlarmScheduler.markMorningNoteRead(ctx);
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void markMorningNoteRead(PluginCall call) {
+        Context ctx = getContext();
+        VocoAlarmScheduler.markMorningNoteRead(ctx);
         JSObject ret = new JSObject();
         ret.put("success", true);
         call.resolve(ret);
@@ -136,15 +173,27 @@ public class VocoNotificationPlugin extends Plugin {
         String daysJson = call.getString("days", "[1,2,3,4,5,6,7]");
         Boolean notifyObj = call.getBoolean("notifyOnStartEnd");
         boolean notify = notifyObj != null ? notifyObj : true;
+        String morningNoteTitle = call.getString("morningNoteTitle", "");
+        String morningNoteText = call.getString("morningNoteText", "");
+        Boolean persistentObj = call.getBoolean("morningNotePersistent");
+        boolean persistent = persistentObj != null ? persistentObj : true;
 
         Context ctx = getContext();
+        boolean prevPersistent = VocoAlarmScheduler.isMorningNotePersistent(ctx);
         SharedPreferences.Editor editor = VocoAlarmScheduler.getPrefs(ctx).edit();
         editor.putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_ENABLED, enabled);
         editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_START_TIME, startTime);
         editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_END_TIME, endTime);
         editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_DAYS, daysJson);
         editor.putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_NOTIFY, notify);
+        editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_TITLE, morningNoteTitle);
+        editor.putString(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_TEXT, morningNoteText);
+        editor.putBoolean(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_PERSISTENT, persistent);
         editor.apply();
+
+        if (prevPersistent != persistent) {
+            VocoAlarmScheduler.onMorningNotePersistentChanged(ctx, persistent);
+        }
 
         if (enabled) {
             VocoAlarmScheduler.setupDailySchedule(ctx);
@@ -178,6 +227,8 @@ public class VocoNotificationPlugin extends Plugin {
         String endTime = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_END_TIME, "21:00");
         String daysJson = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_DAYS, "[1,2,3,4,5,6,7]");
         boolean notify = prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_NOTIFY, true);
+        String morningNoteTitle = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_TITLE, "");
+        String morningNoteText = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_TEXT, "");
         String pausedDate = prefs.getString(VocoAlarmScheduler.KEY_SCHEDULE_PAUSED_DATE, null);
         String todayDateStr = VocoAlarmScheduler.getTodayDateString();
 
@@ -195,6 +246,9 @@ public class VocoNotificationPlugin extends Plugin {
         ret.put("endTime", endTime);
         ret.put("days", daysJson);
         ret.put("notifyOnStartEnd", notify);
+        ret.put("morningNoteTitle", morningNoteTitle);
+        ret.put("morningNoteText", morningNoteText);
+        ret.put("morningNotePersistent", prefs.getBoolean(VocoAlarmScheduler.KEY_SCHEDULE_MORNING_NOTE_PERSISTENT, true));
         ret.put("isInsideWindow", isInside);
         ret.put("isPausedToday", isPausedToday);
         ret.put("remindersRunning", remindersRunning);
@@ -219,11 +273,30 @@ public class VocoNotificationPlugin extends Plugin {
     public void updateWords(PluginCall call) {
         String wordsJson = call.getString("words", "[]");
         Context ctx = getContext();
-        VocoAlarmScheduler.getPrefs(ctx).edit()
-            .putString(VocoAlarmScheduler.KEY_WORDS, wordsJson)
-            .apply();
+        VocoAlarmScheduler.updateWordsAndPruneQueue(ctx, wordsJson);
         JSObject ret = new JSObject();
         ret.put("success", true);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void setStrictMode(PluginCall call) {
+        Boolean enabledObj = call.getBoolean("enabled");
+        boolean enabled = enabledObj != null ? enabledObj : false;
+        Context ctx = getContext();
+        VocoAlarmScheduler.setStrictMode(ctx, enabled);
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        ret.put("enabled", enabled);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getStrictMode(PluginCall call) {
+        Context ctx = getContext();
+        boolean enabled = VocoAlarmScheduler.isStrictMode(ctx);
+        JSObject ret = new JSObject();
+        ret.put("enabled", enabled);
         call.resolve(ret);
     }
 
@@ -279,8 +352,34 @@ public class VocoNotificationPlugin extends Plugin {
         String hindiExample = call.getString("hindiExample", "");
 
         Context ctx = getContext();
-        // Standard notification delivery: uses exactly the same queue and navigation logic
-        VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, hindiMeaning, hindiExample, optionsList, correctIndex, false);
+        if (VocoAlarmScheduler.isStrictMode(ctx)) {
+            int pendingCount = VocoAlarmScheduler.getStrictPendingCount(ctx);
+            if (pendingCount >= VocoAlarmScheduler.STRICT_CAP) {
+                Log.d(TAG, "[VOCO_STRICT] sendTestNotification called but at STRICT_CAP (" + pendingCount + "/" + VocoAlarmScheduler.STRICT_CAP + ")");
+                VocoAlarmScheduler.reconcileStrictNotifications(ctx);
+            } else {
+                try {
+                    org.json.JSONObject testItem = new org.json.JSONObject();
+                    testItem.put("wordId", wordId != null && !wordId.isEmpty() ? wordId : "test_" + System.currentTimeMillis());
+                    testItem.put("wordText", wordText);
+                    testItem.put("meaning", meaning);
+                    testItem.put("example", example);
+                    testItem.put("hindiMeaning", hindiMeaning);
+                    testItem.put("hindiExample", hindiExample);
+                    testItem.put("correctIndex", correctIndex);
+                    testItem.put("isTest", false);
+                    org.json.JSONArray optArr = new org.json.JSONArray();
+                    for (String op : optionsList) optArr.put(op);
+                    testItem.put("options", optArr);
+                    VocoAlarmScheduler.postStrictWord(ctx, testItem, true);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error posting test strict word", e);
+                }
+            }
+        } else {
+            // Standard notification delivery: uses exactly the same queue and navigation logic
+            VocoAlarmScheduler.showNotification(ctx, wordId, wordText, meaning, example, hindiMeaning, hindiExample, optionsList, correctIndex, false);
+        }
 
         JSObject ret = new JSObject();
         ret.put("success", true);

@@ -37,8 +37,17 @@ public class VocoBootReceiver extends BroadcastReceiver {
 
             VocoAlarmScheduler.scheduleNextAlarm(context, targetElapsed, intervalMins, newGeneration);
             Log.d(TAG, "Restored active Voco reminders on " + action + " with gen=" + newGeneration + ". Next in " + intervalMins + " mins.");
+
+            // 3. In Strict Mode, restore any pending strict notifications via reconciliation
+            if (VocoAlarmScheduler.isStrictMode(context)) {
+                Log.d(TAG, "Reconciling strict reminder notifications on system boot");
+                VocoAlarmScheduler.reconcileStrictNotifications(context);
+            }
         } else if (!scheduleEnabled) {
             Log.d(TAG, "Neither reminders nor daily schedule were active. No alarms scheduled.");
         }
+
+        // 4. In Daily Schedule, restore persistent morning note if unread
+        VocoAlarmScheduler.reconcileMorningNoteNotification(context);
     }
 }

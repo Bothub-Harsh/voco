@@ -356,6 +356,7 @@ async function executeCheckBackendStatus(
           uptimeSeconds: data?.uptimeSeconds,
           lastPingAt: data?.lastSelfPingAt,
           lastCheckedAt: Date.now(),
+          keepAlive: data?.keepAlive,
         };
         onStateChange?.(aiProblemStatus);
         return aiProblemStatus;
@@ -373,6 +374,7 @@ async function executeCheckBackendStatus(
         uptimeSeconds: data?.uptimeSeconds,
         lastPingAt: data?.lastSelfPingAt,
         lastCheckedAt: Date.now(),
+        keepAlive: data?.keepAlive,
       };
       onStateChange?.(connectedStatus);
       return connectedStatus;

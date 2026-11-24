@@ -179,7 +179,7 @@ describe('Daily Schedule Service — Complete Unit Tests', () => {
     expect(activeBefore.state).toBe('active');
 
     // User stops reminders during active window
-    markSchedulePausedToday();
+    markSchedulePausedToday(noon);
 
     const pausedConfig = getDailyScheduleConfig();
     const pausedStatus = computeDailyScheduleStatus(pausedConfig, noon);

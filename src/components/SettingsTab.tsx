@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Server,
   Bell,
@@ -26,10 +27,18 @@ import {
   ArrowLeft,
   ChevronRight,
   BatteryCharging,
+  Tag,
+  Lock,
+  RotateCcw,
+  Eye,
 } from 'lucide-react';
-import type { BackendStatus, StorageStatus, DailyScheduleConfig } from '../types';
+import type { BackendStatus, StorageStatus, DailyScheduleConfig, WordSection } from '../types';
+import { ALL_WORDS_SECTION_ID, DEFAULT_ALL_WORDS_SECTION } from '../db/indexedDb';
 import { type ThemeId, THEME_LIST, getThemeDefinition } from '../services/theme';
 import { BackupControls } from './BackupControls';
+import { BottomSheet } from './BottomSheet';
+import { ReliabilityBottomSheet } from './ReliabilityBottomSheet';
+import { MorningNoteScreen } from './MorningNoteScreen';
 import {
   isNativeApp,
   openExactAlarmSettings,
@@ -64,6 +73,14 @@ interface SettingsTabProps {
   theme: ThemeId;
   onSelectTheme: (themeId: ThemeId) => void;
   onToggleTheme?: () => void;
+  // Word Sections & Strict Mode props
+  sections?: WordSection[];
+  sectionWordCounts?: Record<string, number>;
+  selectedReminderSectionIds?: string[];
+  onUpdateReminderSections?: (sectionIds: string[]) => Promise<void>;
+  strictMode?: boolean;
+  onToggleStrictMode?: (enabled: boolean) => Promise<void>;
+  reminderPoolCount?: number;
 }
 
 const PRESET_INTERVALS = [1, 2, 3, 5, 10, 15, 30];
@@ -103,6 +120,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onStopReminders,
   theme,
   onSelectTheme,
+  sections = [DEFAULT_ALL_WORDS_SECTION],
+  sectionWordCounts = {},
+  selectedReminderSectionIds = [ALL_WORDS_SECTION_ID],
+  onUpdateReminderSections,
+  strictMode = false,
+  onToggleStrictMode,
+  reminderPoolCount,
 }) => {
   const native = isNativeApp();
   const [exactAlarmStatus, setExactAlarmStatus] = useState<'granted' | 'prompt' | 'unsupported'>('prompt');
@@ -112,6 +136,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [activeNodeTooltip, setActiveNodeTooltip] = useState<'phone' | 'server' | 'ai' | null>(null);
   const [showServerLegend, setShowServerLegend] = useState(false);
   const [showBatteryGuide, setShowBatteryGuide] = useState(false);
+  const [showReminderSectionsModal, setShowReminderSectionsModal] = useState(false);
+
+  // Morning Note state
+  const [noteTitle, setNoteTitle] = useState(scheduleConfig.morningNoteTitle ?? 'Good morning');
+  const [noteText, setNoteText] = useState(scheduleConfig.morningNoteText ?? '');
+  const [noteSaveStatus, setNoteSaveStatus] = useState<string | null>(null);
+  const [showMorningNotePreview, setShowMorningNotePreview] = useState(false);
+  const noteDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentTheme = getThemeDefinition(theme);
 
@@ -121,6 +153,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       if (synced) setScheduleConfig(synced);
     });
   }, []);
+
+  // Keep local note inputs in sync when scheduleConfig updates
+  useEffect(() => {
+    if (scheduleConfig.morningNoteTitle !== undefined) {
+      setNoteTitle(scheduleConfig.morningNoteTitle || 'Good morning');
+    }
+    if (scheduleConfig.morningNoteText !== undefined) {
+      setNoteText(scheduleConfig.morningNoteText || '');
+    }
+  }, [scheduleConfig.morningNoteTitle, scheduleConfig.morningNoteText]);
 
   // Listen to browser popstate so Android back button returns to Settings home
   useEffect(() => {
@@ -194,6 +236,53 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setScheduleSaveStatus('Saved');
     setTimeout(() => setScheduleSaveStatus(null), 2500);
   };
+
+  const handleToggleMorningNotePersistent = async (persistent: boolean) => {
+    const updated = { ...scheduleConfig, morningNotePersistent: persistent };
+    setScheduleConfig(updated);
+    await saveDailySchedule(updated);
+    setScheduleSaveStatus('Saved');
+    setTimeout(() => setScheduleSaveStatus(null), 2500);
+  };
+
+  const handleSaveMorningNote = useCallback(
+    async (newTitle?: string, newText?: string) => {
+      if (noteDebounceTimerRef.current) {
+        clearTimeout(noteDebounceTimerRef.current);
+        noteDebounceTimerRef.current = null;
+      }
+      const t = (newTitle !== undefined ? newTitle : noteTitle).slice(0, 60);
+      const m = (newText !== undefined ? newText : noteText).slice(0, 500);
+      const updated: DailyScheduleConfig = {
+        ...scheduleConfig,
+        morningNoteTitle: t,
+        morningNoteText: m,
+      };
+      setScheduleConfig(updated);
+      await saveDailySchedule(updated);
+      setNoteSaveStatus('Saved');
+      setTimeout(() => setNoteSaveStatus(null), 2500);
+    },
+    [scheduleConfig, noteTitle, noteText]
+  );
+
+  const triggerDebouncedSave = useCallback(
+    (newTitle: string, newText: string) => {
+      if (noteDebounceTimerRef.current) {
+        clearTimeout(noteDebounceTimerRef.current);
+      }
+      noteDebounceTimerRef.current = setTimeout(() => {
+        handleSaveMorningNote(newTitle, newText);
+      }, 800);
+    },
+    [handleSaveMorningNote]
+  );
+
+  const handleResetMorningNote = useCallback(async () => {
+    setNoteTitle('Good morning');
+    setNoteText('');
+    await handleSaveMorningNote('Good morning', '');
+  }, [handleSaveMorningNote]);
 
   const scheduleStatus = computeDailyScheduleStatus(scheduleConfig, new Date(), remindersActive);
   const isOvernight = isOvernightWindow(scheduleConfig.startTime, scheduleConfig.endTime);
@@ -472,19 +561,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="pt-2 border-t border-slate-100 dark:border-[#2E3341] space-y-2.5">
             <div className="flex items-center justify-center">
               <span
-                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${
-                  isOffline
-                    ? 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-300 dark:border-zinc-700'
-                    : isChecking
-                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                      : isWaking
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${isOffline
+                  ? 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-300 dark:border-zinc-700'
+                  : isChecking
+                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                    : isWaking
+                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                      : isAiProblem
                         ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                        : isAiProblem
-                          ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                          : isDown
-                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800'
-                }`}
+                        : isDown
+                          ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800'
+                  }`}
               >
                 {isChecking ? (
                   <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin text-blue-600" />
@@ -634,72 +722,50 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         {/* Status Guide Bottom Sheet Modal */}
-        {showServerLegend && (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in"
-            onClick={() => setShowServerLegend(false)}
-          >
-            <div
-              className="w-full max-w-sm rounded-2xl p-4 border shadow-xl space-y-3 animate-fade-in-up"
-              style={{
-                backgroundColor: 'var(--voco-bg-card)',
-                borderColor: 'var(--voco-border)',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2E3341]">
-                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
-                  Status Legend
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowServerLegend(false)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+        <BottomSheet
+          isOpen={showServerLegend}
+          onClose={() => setShowServerLegend(false)}
+          title="Status Legend"
+          maxWidthClass="max-w-sm"
+        >
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <span className="font-semibold text-slate-800 dark:text-zinc-200">Online</span>
               </div>
-
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Online</span>
-                  </div>
-                  <span className="text-slate-500 dark:text-zinc-400">Ready</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Waking</span>
-                  </div>
-                  <span className="text-slate-500 dark:text-zinc-400">Starting up</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Down</span>
-                  </div>
-                  <span className="text-slate-500 dark:text-zinc-400">Offline or sleeping</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
-                    <span className="font-semibold text-slate-800 dark:text-zinc-200">AI Problem</span>
-                  </div>
-                  <span className="text-slate-500 dark:text-zinc-400">Key error</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                    <span className="font-semibold text-slate-800 dark:text-zinc-200">Checking</span>
-                  </div>
-                  <span className="text-slate-500 dark:text-zinc-400">Verifying</span>
-                </div>
+              <span className="text-slate-500 dark:text-zinc-400">Ready</span>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <span className="font-semibold text-slate-800 dark:text-zinc-200">Waking</span>
               </div>
+              <span className="text-slate-500 dark:text-zinc-400">Starting up</span>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <span className="font-semibold text-slate-800 dark:text-zinc-200">Down</span>
+              </div>
+              <span className="text-slate-500 dark:text-zinc-400">Offline or sleeping</span>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+                <span className="font-semibold text-slate-800 dark:text-zinc-200">AI Problem</span>
+              </div>
+              <span className="text-slate-500 dark:text-zinc-400">Key error</span>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                <span className="font-semibold text-slate-800 dark:text-zinc-200">Checking</span>
+              </div>
+              <span className="text-slate-500 dark:text-zinc-400">Verifying</span>
             </div>
           </div>
-        )}
+        </BottomSheet>
       </div>
     );
   }
@@ -726,16 +792,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </h3>
           </div>
           <span
-            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-              remindersActive
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
-            }`}
+            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${remindersActive
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
+              : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
+              }`}
           >
             <span
-              className={`w-2 h-2 rounded-full mr-1.5 ${
-                remindersActive ? 'bg-[#28C995] animate-pulse' : 'bg-slate-400 dark:bg-zinc-500'
-              }`}
+              className={`w-2 h-2 rounded-full mr-1.5 ${remindersActive ? 'bg-[#28C995] animate-pulse' : 'bg-slate-400 dark:bg-zinc-500'
+                }`}
             />
             {remindersActive ? 'Running' : 'Stopped'}
           </span>
@@ -830,9 +894,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   key={preset}
                   type="button"
                   onClick={() => onChangeInterval(preset)}
-                  className={`py-2 text-center text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                    isSelected ? 'text-white shadow-xs scale-[1.02]' : 'border'
-                  }`}
+                  className={`py-2 text-center text-xs font-bold rounded-xl transition-all cursor-pointer ${isSelected ? 'text-white shadow-xs scale-[1.02]' : 'border'
+                    }`}
                   style={{
                     backgroundColor: isSelected ? 'var(--voco-accent)' : 'var(--voco-bg-surface)',
                     borderColor: isSelected ? 'var(--voco-accent)' : 'var(--voco-border-subtle)',
@@ -912,6 +975,92 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </span>
           )}
         </div>
+
+        {/* ── Word Section Source for Reminders ── */}
+        <div
+          className="p-3.5 rounded-2xl border transition-all flex items-center justify-between"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface)',
+                color: 'var(--voco-text-secondary)',
+              }}
+            >
+              <Tag className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                Word Sections
+              </h4>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-400 truncate">
+                {selectedReminderSectionIds.includes(ALL_WORDS_SECTION_ID)
+                  ? `All Words (${reminderPoolCount ?? totalWords} words)`
+                  : `${selectedReminderSectionIds.length} section${selectedReminderSectionIds.length === 1 ? '' : 's'} (${reminderPoolCount ?? totalWords} words)`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowReminderSectionsModal(true)}
+            className="text-xs font-bold hover:underline shrink-0 cursor-pointer"
+            style={{ color: 'var(--voco-accent)' }}
+          >
+            Change
+          </button>
+        </div>
+
+        {/* ── Strict Reminder Mode ── */}
+        <div
+          className="p-3.5 rounded-2xl border transition-all flex items-center justify-between"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          <div className="flex items-center space-x-2.5 min-w-0 pr-3">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor: strictMode ? 'var(--voco-accent-soft)' : 'var(--voco-bg-surface)',
+                color: strictMode ? 'var(--voco-accent)' : 'var(--voco-text-secondary)',
+              }}
+            >
+              <Lock className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                Strict Reminder Mode
+              </h4>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                {strictMode
+                  ? 'Unsolved words stack up • Pauses at 10 unsolved words'
+                  : 'Cannot swipe away reminder notification until solved'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={strictMode}
+            onClick={() => onToggleStrictMode && onToggleStrictMode(!strictMode)}
+            className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors shrink-0 ${strictMode ? 'bg-[#6554F5]' : 'bg-slate-300 dark:bg-zinc-700'
+              }`}
+            style={{
+              backgroundColor: strictMode ? 'var(--voco-accent)' : undefined,
+            }}
+          >
+            <div
+              className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${strictMode ? 'translate-x-5' : 'translate-x-0'
+                }`}
+            />
+          </button>
+        </div>
       </div>
     );
   }
@@ -938,15 +1087,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </h3>
           </div>
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              scheduleStatus.state === 'active'
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
-                : scheduleStatus.state === 'paused'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/80'
-                  : scheduleStatus.state === 'scheduled'
-                    ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-[#8875F5] border-indigo-200 dark:border-indigo-800/60'
-                    : 'bg-slate-100 dark:bg-zinc-850 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
-            }`}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${scheduleStatus.state === 'active'
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-300 dark:border-emerald-800/80'
+              : scheduleStatus.state === 'paused'
+                ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800/80'
+                : scheduleStatus.state === 'scheduled'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-[#8875F5] border-indigo-200 dark:border-indigo-800/60'
+                  : 'bg-slate-100 dark:bg-zinc-850 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'
+              }`}
           >
             {scheduleStatus.state === 'active' && <span className="w-1.5 h-1.5 rounded-full bg-[#28C995] mr-1 animate-pulse" />}
             {scheduleStatus.label}
@@ -1053,15 +1201,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="sr-only peer"
               />
               <div
-                className={`w-9 h-5 rounded-full peer transition-colors relative ${
-                  scheduleConfig.enabled ? 'bg-[#6554F5]' : 'bg-slate-300 dark:bg-zinc-700'
-                }`}
+                className={`w-9 h-5 rounded-full peer transition-colors relative ${scheduleConfig.enabled ? 'bg-[#6554F5]' : 'bg-slate-300 dark:bg-zinc-700'
+                  }`}
                 style={scheduleConfig.enabled ? { backgroundColor: 'var(--voco-accent)' } : undefined}
               >
                 <div
-                  className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${
-                    scheduleConfig.enabled ? 'transform translate-x-4' : ''
-                  }`}
+                  className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${scheduleConfig.enabled ? 'transform translate-x-4' : ''
+                    }`}
                 />
               </div>
             </label>
@@ -1111,11 +1257,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                         key={chip.id}
                         type="button"
                         onClick={() => handleToggleDay(chip.id)}
-                        className={`py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                          isSelected
-                            ? 'text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-[#191C23] text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700 border border-slate-200/80 dark:border-[#303541]'
-                        }`}
+                        className={`py-1.5 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${isSelected
+                          ? 'text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-[#191C23] text-slate-500 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700 border border-slate-200/80 dark:border-[#303541]'
+                          }`}
                         style={isSelected ? { backgroundColor: 'var(--voco-accent)' } : undefined}
                         title={chip.full}
                       >
@@ -1160,6 +1305,176 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </div>
 
+        {/* ── Morning Note Card ── */}
+        <div
+          className="p-4 rounded-3xl border shadow-xs space-y-3.5 transition-all"
+          style={{
+            backgroundColor: 'var(--voco-bg-card)',
+            borderColor: 'var(--voco-border-subtle, var(--voco-card-border))',
+          }}
+        >
+          {/* Header Row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{
+                  backgroundColor: 'var(--voco-bg-surface)',
+                  color: 'var(--voco-accent, #6554F5)',
+                }}
+              >
+                <Sun className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                  Morning Note
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                  Custom start alert & message
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {noteSaveStatus && (
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-[#28C995] animate-fade-in">
+                  {noteSaveStatus}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowMorningNotePreview(true)}
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 border transition-colors cursor-pointer"
+                style={{
+                  borderColor: 'var(--voco-border, #CBD5E1)',
+                  color: 'var(--voco-accent, #6554F5)',
+                  backgroundColor: 'var(--voco-bg-surface, #F8FAFC)',
+                }}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Preview</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Title Input */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
+              <label htmlFor="morning-note-title">Notification Title</label>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500">
+                {noteTitle.length}/60
+              </span>
+            </div>
+            <input
+              id="morning-note-title"
+              type="text"
+              maxLength={60}
+              value={noteTitle}
+              onChange={(e) => {
+                const val = e.target.value.slice(0, 60);
+                setNoteTitle(val);
+                triggerDebouncedSave(val, noteText);
+              }}
+              onBlur={() => handleSaveMorningNote(noteTitle, noteText)}
+              placeholder="Good morning"
+              className="w-full px-3 py-2 rounded-xl text-xs font-medium border transition-colors outline-hidden focus:ring-1 focus:ring-[#6554F5]"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface, #F8FAFC)',
+                borderColor: 'var(--voco-border, #CBD5E1)',
+                color: 'var(--voco-text-primary, #0F172A)',
+              }}
+            />
+          </div>
+
+          {/* Text Multi-line Input */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-zinc-300">
+              <label htmlFor="morning-note-text">Morning Note Text</label>
+              <span className="text-[10px] text-slate-400 dark:text-zinc-500">
+                {noteText.length}/500
+              </span>
+            </div>
+            <textarea
+              id="morning-note-text"
+              rows={3}
+              maxLength={500}
+              value={noteText}
+              onChange={(e) => {
+                const val = e.target.value.slice(0, 500);
+                setNoteText(val);
+                triggerDebouncedSave(noteTitle, val);
+              }}
+              onBlur={() => handleSaveMorningNote(noteTitle, noteText)}
+              placeholder="Rise and shine! Ready to practice today's words?"
+              className="w-full px-3 py-2 rounded-xl text-xs font-medium border transition-colors outline-hidden focus:ring-1 focus:ring-[#6554F5] resize-none"
+              style={{
+                backgroundColor: 'var(--voco-bg-surface, #F8FAFC)',
+                borderColor: 'var(--voco-border, #CBD5E1)',
+                color: 'var(--voco-text-primary, #0F172A)',
+              }}
+            />
+          </div>
+
+          {/* Placeholder Hint Line */}
+          <p className="text-[10px] text-slate-400 dark:text-zinc-400 leading-snug">
+            Hint: Use <code className="px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 font-mono text-[9px] text-indigo-500">{'{words}'}</code> for saved word count and <code className="px-1 py-0.5 rounded bg-slate-100 dark:bg-zinc-800 font-mono text-[9px] text-indigo-500">{'{end}'}</code> for stop time.
+          </p>
+
+          {/* Keep Until Read Toggle */}
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              <p className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+                Keep until I read it
+              </p>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-400">
+                The morning notification stays until you open it.
+              </p>
+              <p className="text-[9px] text-slate-400/80 dark:text-zinc-500">
+                Some phones may still allow clearing — Voco brings it back.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              data-testid="morning-note-persistent-toggle"
+              checked={scheduleConfig.morningNotePersistent !== false}
+              onChange={(e) => handleToggleMorningNotePersistent(e.target.checked)}
+              className="w-4 h-4 rounded text-[#6554F5] focus:ring-0 cursor-pointer"
+              style={{ accentColor: 'var(--voco-accent)' }}
+            />
+          </div>
+
+          {/* Notification Off Notice */}
+          {!scheduleConfig.notifyOnStartEnd && (
+            <div className="p-2.5 rounded-xl border text-[11px] flex items-start space-x-2 bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/40 text-amber-700 dark:text-amber-300">
+              <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>
+                Start/stop alerts are off. This note will not be sent as a notification, but you can still preview and open it from Settings.
+              </span>
+            </div>
+          )}
+
+          {/* Actions: Reset to Default & Manual Save */}
+          <div className="pt-1 flex items-center justify-between border-t border-slate-100 dark:border-[#2E3341]">
+            <button
+              type="button"
+              onClick={handleResetMorningNote}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 flex items-center space-x-1 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset to default</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSaveMorningNote(noteTitle, noteText)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-xs cursor-pointer active:scale-95"
+              style={{ backgroundColor: 'var(--voco-accent, #6554F5)' }}
+            >
+              Save Note
+            </button>
+          </div>
+        </div>
+
         {/* ── Short Reliability Row (Opens Bottom Sheet, No Inline Paragraph) ── */}
         {native && (
           <div
@@ -1199,52 +1514,23 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         )}
 
-        {/* Battery Guide Bottom Sheet */}
-        {showBatteryGuide && (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs animate-fade-in"
-            onClick={() => setShowBatteryGuide(false)}
-          >
-            <div
-              className="w-full max-w-sm rounded-2xl p-4 border shadow-xl space-y-3 animate-fade-in-up"
-              style={{
-                backgroundColor: 'var(--voco-bg-card)',
-                borderColor: 'var(--voco-border)',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#2E3341]">
-                <h4 className="text-xs font-bold text-slate-900 dark:text-zinc-100">
-                  Reliable Alarm Delivery
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowBatteryGuide(false)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+        {/* Battery Guide / Reliability Bottom Sheet */}
+        <ReliabilityBottomSheet
+          isOpen={showBatteryGuide}
+          onClose={() => setShowBatteryGuide(false)}
+        />
 
-              <p className="text-xs text-slate-600 dark:text-zinc-300 leading-snug">
-                On Xiaomi, Samsung, Realme, Oppo, and Vivo devices, ensure <strong>Autostart</strong> and <strong>Unrestricted Battery</strong> are enabled for Voco so alarms wake on time when the app is closed.
-              </p>
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBatteryGuide(false);
-                    openBatterySettings();
-                  }}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-xs"
-                  style={{ backgroundColor: 'var(--voco-accent)' }}
-                >
-                  Open Battery Settings
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* Morning Note Preview Screen */}
+        {showMorningNotePreview && createPortal(
+          <MorningNoteScreen
+            title={noteTitle}
+            text={noteText}
+            totalWords={totalWords}
+            endTime={scheduleConfig.endTime}
+            intervalMinutes={reminderInterval}
+            onClose={() => setShowMorningNotePreview(false)}
+          />,
+          document.body
         )}
       </div>
     );
@@ -1293,9 +1579,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 type="button"
                 onClick={() => onSelectTheme(t.id)}
                 aria-pressed={isSelected}
-                className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${
-                  isSelected ? 'shadow-md ring-2' : 'hover:shadow-xs'
-                }`}
+                className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between group cursor-pointer ${isSelected ? 'shadow-md ring-2' : 'hover:shadow-xs'
+                  }`}
                 style={{
                   backgroundColor: t.colors.bgCard,
                   borderColor: isSelected ? t.colors.accent : t.colors.border,
@@ -1442,11 +1727,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </h3>
           </div>
           <span
-            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-              isNotifOk && isExactOk
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
-                : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60'
-            }`}
+            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${isNotifOk && isExactOk
+              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-[#28C995] border-emerald-200 dark:border-emerald-800/60'
+              : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60'
+              }`}
           >
             {isNotifOk && isExactOk ? 'Ready' : 'Needs Setup'}
           </span>
@@ -1464,11 +1748,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="p-3.5 flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  isNotifOk
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
-                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
-                }`}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isNotifOk
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
+                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+                  }`}
               >
                 {isNotifOk ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
               </div>
@@ -1497,11 +1780,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="p-3.5 flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                  isExactOk
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
-                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
-                }`}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${isExactOk
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-[#28C995]'
+                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+                  }`}
               >
                 {isExactOk ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
               </div>
@@ -1585,15 +1867,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       >
         <div className="flex items-center space-x-2">
           <span
-            className={`w-2 h-2 rounded-full ${
-              !isOnline || backendStatus?.state === 'offline'
-                ? 'bg-slate-400'
-                : backendStatus?.state === 'waking' || backendStatus?.state === 'ai_problem'
-                  ? 'bg-amber-400'
-                  : backendStatus?.state === 'down'
-                    ? 'bg-rose-500'
-                    : 'bg-emerald-500'
-            }`}
+            className={`w-2 h-2 rounded-full ${!isOnline || backendStatus?.state === 'offline'
+              ? 'bg-slate-400'
+              : backendStatus?.state === 'waking' || backendStatus?.state === 'ai_problem'
+                ? 'bg-amber-400'
+                : backendStatus?.state === 'down'
+                  ? 'bg-rose-500'
+                  : 'bg-emerald-500'
+              }`}
           />
           <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
             {serverSummary}
@@ -1789,6 +2070,108 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           Voco Vocabulary • v1.2.0
         </p>
       </div>
+
+      {/* ━━ Reminder Sections Picker Modal ━━ */}
+      {showReminderSectionsModal &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 transition-colors overflow-hidden"
+          >
+            <div className="bg-white dark:bg-[#1B1D25] w-full max-w-sm rounded-2xl shadow-elevated border border-slate-200/90 dark:border-[#30333E] p-6 relative transition-colors animate-fade-in-up">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                  Reminder Words
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowReminderSectionsModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4">
+                Choose which section feeds your vocabulary reminders.
+              </p>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
+                {/* All Words */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onUpdateReminderSections) {
+                      await onUpdateReminderSections([ALL_WORDS_SECTION_ID]);
+                    }
+                    setShowReminderSectionsModal(false);
+                  }}
+                  className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${selectedReminderSectionIds.includes(ALL_WORDS_SECTION_ID)
+                    ? 'border-[#6554F5] bg-indigo-50/50 dark:bg-indigo-950/30'
+                    : 'border-slate-200 dark:border-zinc-800 hover:border-slate-300'
+                    }`}
+                >
+                  <div className="min-w-0">
+                    <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block truncate">
+                      All Words (Default)
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                      {totalWords} words
+                    </span>
+                  </div>
+                  {selectedReminderSectionIds.includes(ALL_WORDS_SECTION_ID) && (
+                    <CheckCircle2 className="w-4 h-4 text-[#6554F5] shrink-0" />
+                  )}
+                </button>
+
+                {/* Custom Sections */}
+                {sections
+                  .filter((s) => s.id !== ALL_WORDS_SECTION_ID)
+                  .map((sec) => {
+                    const isSelected = selectedReminderSectionIds.includes(sec.id);
+                    const count = sectionWordCounts[sec.id] || 0;
+                    return (
+                      <button
+                        key={sec.id}
+                        type="button"
+                        onClick={async () => {
+                          if (onUpdateReminderSections) {
+                            await onUpdateReminderSections([sec.id]);
+                          }
+                          setShowReminderSectionsModal(false);
+                        }}
+                        className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${isSelected
+                          ? 'border-[#6554F5] bg-indigo-50/50 dark:bg-indigo-950/30'
+                          : 'border-slate-200 dark:border-zinc-800 hover:border-slate-300'
+                          }`}
+                      >
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-slate-900 dark:text-zinc-100 block truncate">
+                            {sec.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                            {count} words
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <CheckCircle2 className="w-4 h-4 text-[#6554F5] shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowReminderSectionsModal(false)}
+                className="w-full py-2.5 px-4 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
